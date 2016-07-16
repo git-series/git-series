@@ -4,7 +4,7 @@ version = "0.8.0"
 dependencies = [
  "chrono 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "git2 0.4.3 (git+https://github.com/alexcrichton/git2-rs)",
+ "git2 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "isatty 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "quick-error 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -72,12 +72,12 @@ dependencies = [
 
 [[package]]
 name = "git2"
-version = "0.4.3"
-source = "git+https://github.com/alexcrichton/git2-rs#c52ba513ed236b8294e5f53d93655a695d01997c"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bitflags 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
- "libgit2-sys 0.4.3 (git+https://github.com/alexcrichton/git2-rs)",
+ "libgit2-sys 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -117,8 +117,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "libgit2-sys"
-version = "0.4.3"
-source = "git+https://github.com/alexcrichton/git2-rs#c52ba513ed236b8294e5f53d93655a695d01997c"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cmake 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "gcc 0.3.31 (registry+https://github.com/rust-lang/crates.io-index)",
