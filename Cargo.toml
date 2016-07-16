@@ -1,0 +1,16 @@
+[package]
+name = "git-series"
+version = "0.8.0"
+authors = ["Josh Triplett <josh@joshtriplett.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/joshtriplett/git-series"
+description = "Track patch series in git"
+
+[dependencies]
+chrono = "0.2.22"
+clap = "2.7.0"
+git2 = { git = "https://github.com/alexcrichton/git2-rs" }
+isatty = "0.1.1"
+quick-error = "1.0"
+tempdir = "0.3.4"
