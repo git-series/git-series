@@ -1,0 +1,223 @@
+.TH git-series 1
+
+.SH NAME
+git-series \- track changes to a patch series with git
+
+.SH SYNOPSIS
+.nf
+\fBgit series\fR [\fISUBCOMMAND\fR] [\fIOPTIONS\fR]
+.fi
+
+.SH DESCRIPTION
+.PP
+\fBgit series\fR tracks changes to a patch series over time.
+\fBgit series\fR also tracks a cover letter for the patch series, formats the
+series for email, and prepares pull requests.
+
+Use \fBgit series start\fR \fIseriesname\fR to start a patch series
+\fIseriesname\fR.
+Use normal \fBgit\fR commands to commit changes, and use \fBgit series
+status\fR to check what has changed.
+Use \fBgit series cover\fR to add or edit a cover letter.
+Use \fBgit series add\fR and \fBgit series commit\fR (or \fBgit series commit
+-a\fR) to commit changes to the patch series.
+Use \fBgit series rebase -i\fR to help rework or reorganize the patch series.
+Use \fBgit series format\fR to prepare the patch series to send via email, or
+\fBgit series req\fR to prepare a "please pull" mail.
+
+Running \fBgit series\fR without arguments shows the list of patch series,
+marking the current patch series with a '*'.
+
+.SH SUBCOMMANDS
+.TP
+\fBgit series add\fR \fIchange\fR...
+Add changes to the staging area for the next \fBgit series commit\fR.
+.RS
+.TP
+\fIchange\fR...
+Changes to add: any combination of "series", "base", and "cover".
+.RE
+
+.TP
+\fBgit series base\fR [\fB-d\fR|\fB--delete\fR] [\fIbase\fR]
+Get or set the base commit for the patch series.
+With no parameters, print the hash of the base commit.
+With parameters, set or delete the base commit.
+
+This only changes the base in the working version of the patch series; use
+\fBgit series add base\fR to add that change to the next \fBgit series
+commit\fR, or use \fBgit series commit -a\fR to commit the new base and all
+other changes to the series in one step.
+.RS
+.TP
+\fIbase\fR
+New base commit.
+This can use a commit hash, ref name, or special syntaxes such as refname^ or
+refname~2.
+.TP
+.BR -d | --delete
+Delete the current base commit.
+.RE
+
+.TP
+\fBgit series checkout\fR \fIname\fR
+Resume work on the patch series \fIname\fR; check out the current version as
+HEAD.
+
+.TP
+\fBgit series commit\fR [\fB-a\fR|\fB--all\fR] [\fB-m\fR \fImessage\fR] \
+[\fB-v\fR|\fB--verbose\fR]
+Record a new version of the patch series.
+Without arguments, this will run an editor to edit a commit message, and then
+commit the changes previously added with \fBgit series add\fR.
+.RS
+.TP
+.BR -a | --all
+Commit all changes, not just those added with \fBgit series add\fR.
+.TP
+\fB-m\fR \fImessage\fR
+Use \fImessage\fR as the commit message, rather than running an editor.
+.TP
+.BR -v | --verbose
+Show a diff of the commit in the editor, below the commit message, as a
+reminder of the changes in the commit.
+This diff will not appear in the commit message.
+.RE
+
+.TP
+\fBgit series cover\fR [\fB-d\fR|\fB--delete\fR]
+Create or edit the cover letter for the patch series.
+Without arguments, this will run an editor to edit the cover letter.
+
+This only changes the cover letter in the working version of the patch series;
+use \fBgit series add cover\fR to add that change to the next \fBgit series
+commit\fR, or use \fBgit series commit -a\fR to commit the new cover letter and
+all other changes to the series in one step.
+.RS
+.TP
+.BR -d | --delete
+Delete the cover letter rather than editing it.
+.RE
+
+.TP
+\fBgit series delete\fR \fIname\fR
+Delete the series \fIname\fR, including any work in progress, staged or unstaged.
+
+.TP
+\fBgit series detach\fR
+Stop working on any patch series.
+Any changes in progress, staged or unstaged, will remain intact.
+To start working on the branch again, use \fBgit series checkout\fR.
+
+.TP
+\fBgit series format\fR [\fB--stdout\fR]
+Prepare the patch series to send via email.
+This creates one file per patch in the series, plus one additional file for the
+cover letter if any.
+The patch series must have a base set with \fBgit series base\fR, to identify
+the series of patches to format.
+
+Each file contains one email in mbox format, ready to send, with email headers
+threading all the patches together.
+If the series has a cover letter, all of the patches will include headers to
+make them a reply to the cover letter; otherwise, all of the patches will
+include headers to make them a reply to the first patch.
+.RS
+.TP
+.B --stdout
+Write the entire patch series to stdout rather than to separate patch files.
+.RE
+
+.TP
+\fBgit series help\fR [\fIsubcommand\fR]
+Show help for \fBgit series\fR or a subcommand.
+Without arguments, shows a summary of the subcommands supported by \fBgit
+series\fR.
+.RS
+.TP
+\fIsubcommand\fR
+Show help for \fIsubcommand\fR.
+.RE
+
+.TP
+\fBgit series log\fR [\fB-p\fR|\fB--patch\fR]
+Show the history of the patch series.
+.RS
+.TP
+.BR -p | --patch
+Include a patch for each change committed to the series.
+.RE
+
+.TP
+\fBgit series rebase\fR [\fB-i\fR|\fB--interactive\fR] [\fIonto\fR]
+Rebase the patch series, either onto a new base, interactively, or both.
+The patch series must have a base set with \fBgit series base\fR, to identify
+the series of patches to rebase.
+.RS
+.TP
+\fIonto\fR
+Commit to rebase the series onto.
+This can use a commit hash, ref name, or special syntaxes such as refname^ or
+refname~2.
+.TP
+.BR -i | --interactive
+Interactively edit the list of commits.
+This uses the same format and syntax as \fBgit rebase -i\fR, to allow
+reordering, dropping, combining, or editing commits.
+.RE
+
+.TP
+\fBgit series req\fR [\fB-p\fR|\fB--patch\fR] \fIurl\fR \fItag\fR
+Generate a mail requesting a pull of the patch series.
+
+Before running this command, push the patch series to the repository at
+\fIurl\fR, as a tag or branch named \fItag\fR.
+
+A pull request for a signed or annotated tag will include the message from the
+tag.  The pull request will also include the cover letter if any, unless the
+tag message already contains the cover letter.  The subject of the mail will
+include the first line from the cover letter, or the name of the series if no
+cover letter.
+
+The patch series must have a base set with \fBgit series base\fR, to identify
+the series of patches to request a pull of.
+.RS
+.TP
+\fIurl\fR
+URL of the repository to pull from.
+.TP
+.TP
+\fItag\fR
+Name of a tag or branch to request a pull from.
+.TP
+.BR -p | --patch
+Include a patch showing the combined change made by all the patches in the series.
+This can help a reviewer see the effect of pulling the series.
+.RE
+
+.TP
+\fBgit series start\fR \fIname\fR
+Start a new patch series named \fIname\fR.
+
+.TP
+\fBgit series status\fR
+Show the status of the current patch series.
+
+This shows any changes staged for the next \fBgit series commit\fR, changes in
+the current working copy but not staged for the next \fBgit series commit\fR,
+and hints about the next commands to run.
+
+.TP
+\fBgit series unadd\fR \fIchange\fR
+Remove changes from the next \fBgit series commit\fR, undoing \fBgit series
+add\fR.
+
+The changes remain in the current working version of the series.
+.RS
+.TP
+\fIchange\fR...
+Changes to remove: any combination of "series", "base", and "cover".
+.RE
+
+.SH "SEE ALSO"
+.BR git (1)
