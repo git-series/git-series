@@ -16,7 +16,7 @@ use std::io::Write as IoWrite;
 use std::process::Command;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Commit, Diff, ObjectType, Oid, Reference, Repository, TreeBuilder};
+use git2::{Config, Commit, Diff, ObjectType, Oid, Reference, Repository, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
@@ -508,7 +508,7 @@ fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn get_editor(config: &git2::Config) -> Result<OsString> {
+fn get_editor(config: &Config) -> Result<OsString> {
     if let Some(e) = env::var_os("GIT_EDITOR") {
         return Ok(e);
     }
@@ -535,7 +535,7 @@ fn get_editor(config: &git2::Config) -> Result<OsString> {
 
 // Get the pager to use; with for_cmd set, get the pager for use by the
 // specified git command.  If get_pager returns None, don't use a pager.
-fn get_pager(config: &git2::Config, for_cmd: &str, default: bool) -> Option<OsString> {
+fn get_pager(config: &Config, for_cmd: &str, default: bool) -> Option<OsString> {
     if !isatty::stdout_isatty() {
         return None;
     }
@@ -544,7 +544,7 @@ fn get_pager(config: &git2::Config, for_cmd: &str, default: bool) -> Option<OsSt
     // as a boolean.
     let maybe_pager = config.get_path(&format!("pager.{}", for_cmd)).ok();
     let (cmd_want_pager, cmd_pager) = maybe_pager.map_or((default, None), |p|
-            if let Ok(b) = git2::Config::parse_bool(&p) {
+            if let Ok(b) = Config::parse_bool(&p) {
                 (b, None)
             } else {
                 (true, Some(p))
@@ -586,7 +586,7 @@ fn cmd_maybe_shell<S: AsRef<OsStr>>(program: S, args: bool) -> Command {
     }
 }
 
-fn run_editor<S: AsRef<OsStr>>(config: &git2::Config, filename: S) -> Result<()> {
+fn run_editor<S: AsRef<OsStr>>(config: &Config, filename: S) -> Result<()> {
     let editor = try!(get_editor(&config));
     let editor_status = try!(cmd_maybe_shell(editor, true).arg(&filename).status());
     if !editor_status.success() {
@@ -605,7 +605,7 @@ impl Output {
         Output { pager: None, include_stderr: false }
     }
 
-    fn auto_pager(&mut self, config: &git2::Config, for_cmd: &str, default: bool) -> Result<()> {
+    fn auto_pager(&mut self, config: &Config, for_cmd: &str, default: bool) -> Result<()> {
         if let Some(pager) = get_pager(config, for_cmd, default) {
             let mut cmd = cmd_maybe_shell(pager, false);
             cmd.stdin(std::process::Stdio::piped());
@@ -660,7 +660,7 @@ impl IoWrite for Output {
     }
 }
 
-fn get_signature(config: &git2::Config, which: &str) -> Result<git2::Signature<'static>> {
+fn get_signature(config: &Config, which: &str) -> Result<git2::Signature<'static>> {
     let name_var = ["GIT_", which, "_NAME"].concat();
     let email_var = ["GIT_", which, "_EMAIL"].concat();
     let which_lc = which.to_lowercase();
