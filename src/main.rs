@@ -624,7 +624,9 @@ impl Output {
 
     fn write_err(&mut self, msg: &str) {
         if self.include_stderr {
-            write!(self, "{}", msg).unwrap();
+            if write!(self, "{}", msg).is_err() {
+                write!(std::io::stderr(), "{}", msg).unwrap();
+            }
         } else {
             write!(std::io::stderr(), "{}", msg).unwrap();
         }
