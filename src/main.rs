@@ -19,7 +19,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Config, Commit, Diff, ObjectType, Oid, Reference, Repository, TreeBuilder};
+use git2::{Config, Commit, Diff, Object, ObjectType, Oid, Reference, Repository, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
@@ -228,7 +228,7 @@ impl<'repo> Internals<'repo> {
             // Include all commits from tree, to keep them reachable and fetchable. Include base,
             // because series might not have it as an ancestor; we don't enforce that until commit.
             for e in tree.iter() {
-                if e.kind() == Some(git2::ObjectType::Commit) {
+                if e.kind() == Some(ObjectType::Commit) {
                     parents.push(e.id());
                 }
             }
@@ -355,7 +355,7 @@ fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn checkout_tree(repo: &Repository, treeish: &git2::Object) -> Result<()> {
+fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
     let mut conflicts = Vec::new();
     let mut dirty = Vec::new();
     let result = {
@@ -881,7 +881,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let mut parents: Vec<Oid> = Vec::new();
     // Include all commits from tree, to keep them reachable and fetchable.
     for e in tree.iter() {
-        if e.kind() == Some(git2::ObjectType::Commit) && e.name().unwrap() != "base" {
+        if e.kind() == Some(ObjectType::Commit) && e.name().unwrap() != "base" {
             parents.push(e.id())
         }
     }
@@ -1542,7 +1542,7 @@ fn main() {
     let mut out = Output::new();
 
     let err = || -> Result<()> {
-        let repo = try!(git2::Repository::discover("."));
+        let repo = try!(Repository::discover("."));
         match m.subcommand() {
             ("", _) => series(&mut out, &repo),
             ("add", Some(ref sm)) => add(&repo, &sm),
