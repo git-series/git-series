@@ -22,8 +22,6 @@ use tempdir::TempDir;
 quick_error! {
     #[derive(Debug)]
     enum Error {
-        CommitNoChanges {}
-        CheckoutConflict {}
         Git2(err: git2::Error) {
             from()
             cause(err)
@@ -371,13 +369,13 @@ fn checkout_tree(repo: &Repository, treeish: &git2::Object) -> Result<()> {
     };
     match result {
         Err(ref e) if e.code() == git2::ErrorCode::Conflict => {
-            let mut stderr = std::io::stderr();
-            writeln!(stderr, "error: Your changes to the following files would be overwritten by checkout:").unwrap();
+            let mut msg = String::new();
+            writeln!(msg, "error: Your changes to the following files would be overwritten by checkout:").unwrap();
             for path in conflicts {
-                writeln!(stderr, "        {}", path.to_string_lossy()).unwrap();
+                writeln!(msg, "        {}", path.to_string_lossy()).unwrap();
             }
-            writeln!(stderr, "Please, commit your changes or stash them before you switch series.").unwrap();
-            return Err(Error::CheckoutConflict);
+            writeln!(msg, "Please, commit your changes or stash them before you switch series.").unwrap();
+            return Err(msg.into());
         }
         _ => try!(result),
     }
@@ -744,9 +742,10 @@ fn commit_status(repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<(
     };
 
     if do_status || !changes {
-        print!("{}", status);
-        if !do_status {
-            return Err(Error::CommitNoChanges);
+        if do_status {
+            print!("{}", status);
+        } else {
+            return Err(status.into());
         }
         return Ok(());
     }
@@ -1486,11 +1485,8 @@ fn git_series() -> Result<()> {
 
 fn main() {
     if let Err(e) = git_series() {
-        match e {
-            Error::CommitNoChanges => {},
-            Error::CheckoutConflict => {},
-            _ => writeln!(std::io::stderr(), "{}", e).unwrap(),
-        }
+        let msg = e.to_string();
+        write!(std::io::stderr(), "{}{}", msg, if msg.ends_with('\n') { "" } else { "\n" }).unwrap();
         std::process::exit(1);
     }
 }
