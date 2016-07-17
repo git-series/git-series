@@ -989,14 +989,19 @@ fn diffstat(diff: &Diff) -> Result<String> {
 }
 
 fn write_diff<W: IoWrite>(f: &mut W, diff: &Diff) -> Result<()> {
-    Ok(try!(diff.print(git2::DiffFormat::Patch, |_, _, l| {
-        let o = l.origin();
-        if o == '+' || o == '-' || o == ' ' {
-            f.write_all(&[o as u8]).unwrap();
-        }
-        f.write_all(l.content()).unwrap();
-        true
-    })))
+    let mut err = Ok(());
+    try!(diff.print(git2::DiffFormat::Patch, |_, _, l| {
+        err = || -> Result<()> {
+            let o = l.origin();
+            if o == '+' || o == '-' || o == ' ' {
+                try!(f.write_all(&[o as u8]));
+            }
+            try!(f.write_all(l.content()));
+            Ok(())
+        }();
+        err.is_ok()
+    }));
+    err
 }
 
 fn mail_signature() -> String {
