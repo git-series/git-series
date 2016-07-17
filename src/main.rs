@@ -297,7 +297,7 @@ fn shead_series_name(shead: &Reference) -> Result<String> {
     Ok(shead_target[SERIES_PREFIX.len()..].to_string())
 }
 
-fn series(repo: &Repository) -> Result<()> {
+fn series(out: &mut Output, repo: &Repository) -> Result<()> {
     let mut refs = Vec::new();
     for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
         let l = prefix.len();
@@ -313,6 +313,9 @@ fn series(repo: &Repository) -> Result<()> {
     refs.extend(shead_target.clone().into_iter());
     refs.sort();
     refs.dedup();
+
+    let config = try!(repo.config());
+    try!(out.auto_pager(&config, "branch", false));
     for name in refs.iter() {
         let star = if Some(name) == shead_target.as_ref() { '*' } else { ' ' };
         let new = if try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, name)))).is_none() {
@@ -320,10 +323,10 @@ fn series(repo: &Repository) -> Result<()> {
         } else {
             ""
         };
-        println!("{} {}{}", star, name, new);
+        try!(writeln!(out, "{} {}{}", star, name, new));
     }
     if refs.is_empty() {
-        println!("No series; use \"git series start <name>\" to start");
+        try!(writeln!(out, "No series; use \"git series start <name>\" to start"));
     }
     Ok(())
 }
@@ -532,15 +535,15 @@ fn get_editor(config: &git2::Config) -> Result<OsString> {
 
 // Get the pager to use; with for_cmd set, get the pager for use by the
 // specified git command.  If get_pager returns None, don't use a pager.
-fn get_pager(config: &git2::Config, for_cmd: Option<&str>) -> Option<OsString> {
+fn get_pager(config: &git2::Config, for_cmd: &str, default: bool) -> Option<OsString> {
     if !isatty::stdout_isatty() {
         return None;
     }
     // pager.cmd can contain a boolean (if false, force no pager) or a
     // command-specific pager; only treat it as a command if it doesn't parse
     // as a boolean.
-    let maybe_pager = for_cmd.and_then(|cmd| config.get_path(&format!("pager.{}", cmd)).ok());
-    let (cmd_want_pager, cmd_pager) = maybe_pager.map_or((true, None), |p|
+    let maybe_pager = config.get_path(&format!("pager.{}", for_cmd)).ok();
+    let (cmd_want_pager, cmd_pager) = maybe_pager.map_or((default, None), |p|
             if let Ok(b) = git2::Config::parse_bool(&p) {
                 (b, None)
             } else {
@@ -602,8 +605,8 @@ impl Output {
         Output { pager: None, include_stderr: false }
     }
 
-    fn auto_pager(&mut self, config: &git2::Config, for_cmd: Option<&str>) -> Result<()> {
-        if let Some(pager) = get_pager(config, for_cmd) {
+    fn auto_pager(&mut self, config: &git2::Config, for_cmd: &str, default: bool) -> Result<()> {
+        if let Some(pager) = get_pager(config, for_cmd, default) {
             let mut cmd = cmd_maybe_shell(pager, false);
             cmd.stdin(std::process::Stdio::piped());
             if env::var_os("LESS").is_none() {
@@ -694,7 +697,7 @@ fn write_status(status: &mut String, diff: &Diff, heading: &str, show_hints: boo
     Ok(changes)
 }
 
-fn commit_status(repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<()> {
+fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<()> {
     let config = try!(repo.config());
     let shead = match repo.find_reference(SHEAD_REF) {
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => { println!("No series; use \"git series start <name>\" to start"); return Ok(()); }
@@ -755,7 +758,8 @@ fn commit_status(repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<(
 
     if do_status || !changes {
         if do_status {
-            print!("{}", status);
+            try!(out.auto_pager(&config, "status", false));
+            try!(write!(out, "{}", status));
         } else {
             return Err(status.into());
         }
@@ -835,7 +839,7 @@ fn commit_status(repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<(
     }
 
     let (new_commit_short_id, new_commit_summary) = try!(commit_summarize_components(&repo, new_commit_oid));
-    println!("[{} {}] {}", series_name, new_commit_short_id, new_commit_summary);
+    try!(writeln!(out, "[{} {}] {}", series_name, new_commit_short_id, new_commit_summary));
 
     Ok(())
 }
@@ -1038,7 +1042,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let signature = mail_signature();
 
     let mut out : Box<IoWrite> = if to_stdout {
-        try!(out.auto_pager(&config, Some("format-patch")));
+        try!(out.auto_pager(&config, "format-patch", true));
         Box::new(out)
     } else {
         Box::new(std::io::stdout())
@@ -1116,7 +1120,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 
 fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
-    try!(out.auto_pager(&config, Some("log")));
+    try!(out.auto_pager(&config, "log", true));
 
     let mut revwalk = try!(repo.revwalk());
     revwalk.simplify_first_parent();
@@ -1140,7 +1144,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             try!(writeln!(out, "    {}", line));
         }
         if show_diff {
-            writeln!(out, "").unwrap();
+            try!(writeln!(out, ""));
             let parent_tree = if first_series_commit {
                 None
             } else {
@@ -1283,7 +1287,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn req(repo: &Repository, m: &ArgMatches) -> Result<()> {
+fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
     let shead = try!(repo.find_reference(SHEAD_REF));
     let shead_commit = try!(peel_to_commit(try!(shead.resolve())));
@@ -1384,31 +1388,32 @@ fn req(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let diff = try!(repo.diff_tree_to_tree(Some(&base_commit.tree().unwrap()), Some(&series_commit.tree().unwrap()), None));
     let stats = try!(diffstat(&diff));
 
-    println!("From {} Mon Sep 17 00:00:00 2001", shead_commit.id());
-    println!("Message-Id: {}", message_id);
-    println!("From: {} <{}>", author.name().unwrap(), author_email);
-    println!("Date: {}", date_822(author.when()));
-    println!("Subject: [GIT PULL] {}\n", subject);
+    try!(out.auto_pager(&config, "request-pull", true));
+    try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
+    try!(writeln!(out, "Message-Id: {}", message_id));
+    try!(writeln!(out, "From: {} <{}>", author.name().unwrap(), author_email));
+    try!(writeln!(out, "Date: {}", date_822(author.when())));
+    try!(writeln!(out, "Subject: [GIT PULL] {}\n", subject));
     if let Some(extra_body) = extra_body {
-        println!("{}", extra_body);
+        try!(writeln!(out, "{}", extra_body));
     }
-    println!("The following changes since commit {}:\n", base.id());
-    println!("{}\n", commit_subject_date(&mut base_commit));
-    println!("are available in the git repository at:\n");
-    println!("  {} {}\n", url, remote_pull_name);
-    println!("for you to fetch changes up to {}:\n", series.id());
-    println!("{}\n", commit_subject_date(&mut series_commit));
-    println!("----------------------------------------------------------------");
+    try!(writeln!(out, "The following changes since commit {}:\n", base.id()));
+    try!(writeln!(out, "{}\n", commit_subject_date(&mut base_commit)));
+    try!(writeln!(out, "are available in the git repository at:\n"));
+    try!(writeln!(out, "  {} {}\n", url, remote_pull_name));
+    try!(writeln!(out, "for you to fetch changes up to {}:\n", series.id()));
+    try!(writeln!(out, "{}\n", commit_subject_date(&mut series_commit)));
+    try!(writeln!(out, "----------------------------------------------------------------"));
     if let Some(msg) = msg {
-        println!("{}", msg);
-        println!("----------------------------------------------------------------");
+        try!(writeln!(out, "{}", msg));
+        try!(writeln!(out, "----------------------------------------------------------------"));
     }
-    println!("{}", shortlog(&mut commits));
-    println!("{}", stats);
+    try!(writeln!(out, "{}", shortlog(&mut commits)));
+    try!(writeln!(out, "{}", stats));
     if m.is_present("patch") {
-        try!(write_diff(&mut std::io::stdout(), &diff));
+        try!(write_diff(out, &diff));
     }
-    println!("{}", mail_signature());
+    try!(writeln!(out, "{}", mail_signature()));
 
     Ok(())
 }
@@ -1477,20 +1482,20 @@ fn main() {
     let err = || -> Result<()> {
         let repo = try!(git2::Repository::discover("."));
         match m.subcommand() {
-            ("", _) => series(&repo),
+            ("", _) => series(&mut out, &repo),
             ("add", Some(ref sm)) => add(&repo, &sm),
             ("base", Some(ref sm)) => base(&repo, &sm),
             ("checkout", Some(ref sm)) => checkout(&repo, &sm),
-            ("commit", Some(ref sm)) => commit_status(&repo, &sm, false),
+            ("commit", Some(ref sm)) => commit_status(&mut out, &repo, &sm, false),
             ("cover", Some(ref sm)) => cover(&repo, &sm),
             ("delete", Some(ref sm)) => delete(&repo, &sm),
             ("detach", _) => detach(&repo),
             ("format", Some(ref sm)) => format(&mut out, &repo, &sm),
             ("log", Some(ref sm)) => log(&mut out, &repo, &sm),
             ("rebase", Some(ref sm)) => rebase(&repo, &sm),
-            ("req", Some(ref sm)) => req(&repo, &sm),
+            ("req", Some(ref sm)) => req(&mut out, &repo, &sm),
             ("start", Some(ref sm)) => start(&repo, &sm),
-            ("status", Some(ref sm)) => commit_status(&repo, &sm, true),
+            ("status", Some(ref sm)) => commit_status(&mut out, &repo, &sm, true),
             ("unadd", Some(ref sm)) => unadd(&repo, &sm),
             _ => unreachable!()
         }
