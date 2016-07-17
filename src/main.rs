@@ -592,13 +592,17 @@ fn run_editor<S: AsRef<OsStr>>(config: &git2::Config, filename: S) -> Result<()>
     Ok(())
 }
 
-enum Pager {
-    Pager(std::process::Child),
-    NoPager(std::io::Stdout),
+struct Output {
+    pager: Option<std::process::Child>,
+    include_stderr: bool,
 }
 
-impl Pager {
-    fn auto(config: &git2::Config, for_cmd: Option<&str>) -> Result<Pager> {
+impl Output {
+    fn new() -> Self {
+        Output { pager: None, include_stderr: false }
+    }
+
+    fn auto_pager(&mut self, config: &git2::Config, for_cmd: Option<&str>) -> Result<()> {
         if let Some(pager) = get_pager(config, for_cmd) {
             let mut cmd = cmd_maybe_shell(pager, false);
             cmd.stdin(std::process::Stdio::piped());
@@ -609,16 +613,24 @@ impl Pager {
                 cmd.env("LV", "-c");
             }
             let child = try!(cmd.spawn());
-            Ok(Pager::Pager(child))
+            self.pager = Some(child);
+            self.include_stderr = isatty::stderr_isatty();
+        }
+        Ok(())
+    }
+
+    fn write_err(&mut self, msg: &str) {
+        if self.include_stderr {
+            write!(self, "{}", msg).unwrap();
         } else {
-            Ok(Pager::NoPager(std::io::stdout()))
+            write!(std::io::stderr(), "{}", msg).unwrap();
         }
     }
 }
 
-impl Drop for Pager {
+impl Drop for Output {
     fn drop(&mut self) {
-        if let Pager::Pager(ref mut child) = *self {
+        if let Some(ref mut child) = self.pager {
             let status = child.wait().unwrap();
             if !status.success() {
                 writeln!(std::io::stderr(), "Pager exited with status {}", status).unwrap();
@@ -627,18 +639,18 @@ impl Drop for Pager {
     }
 }
 
-impl IoWrite for Pager {
+impl IoWrite for Output {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match *self {
-            Pager::Pager(ref mut child) => child.stdin.as_mut().unwrap().write(buf),
-            Pager::NoPager(ref mut stdout) => stdout.write(buf),
+        match self.pager {
+            Some(ref mut child) => child.stdin.as_mut().unwrap().write(buf),
+            None => std::io::stdout().write(buf),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match *self {
-            Pager::Pager(ref mut child) => child.stdin.as_mut().unwrap().flush(),
-            Pager::NoPager(ref mut stdout) => stdout.flush(),
+        match self.pager {
+            Some(ref mut child) => child.stdin.as_mut().unwrap().flush(),
+            None => std::io::stdout().flush(),
         }
     }
 }
@@ -985,7 +997,7 @@ fn mail_signature() -> String {
     format!("-- \ngit-series {}", crate_version!())
 }
 
-fn format(repo: &Repository, m: &ArgMatches) -> Result<()> {
+fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
     let to_stdout = m.is_present("stdout");
 
@@ -1026,7 +1038,8 @@ fn format(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let signature = mail_signature();
 
     let mut out : Box<IoWrite> = if to_stdout {
-        Box::new(try!(Pager::auto(&config, Some("format-patch"))))
+        try!(out.auto_pager(&config, Some("format-patch")));
+        Box::new(out)
     } else {
         Box::new(std::io::stdout())
     };
@@ -1101,9 +1114,9 @@ fn format(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn log(repo: &Repository, m: &ArgMatches) -> Result<()> {
+fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
-    let mut out = try!(Pager::auto(&config, Some("log")));
+    try!(out.auto_pager(&config, Some("log")));
 
     let mut revwalk = try!(repo.revwalk());
     revwalk.simplify_first_parent();
@@ -1134,7 +1147,7 @@ fn log(repo: &Repository, m: &ArgMatches) -> Result<()> {
                 Some(try!(try!(repo.find_commit(first_parent_id)).tree()))
             };
             let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
-            try!(write_diff(&mut out, &diff));
+            try!(write_diff(out, &diff));
         }
 
         if first_series_commit {
@@ -1400,7 +1413,7 @@ fn req(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn git_series() -> Result<()> {
+fn main() {
     let m = App::new("git-series")
             .bin_name("git series")
             .about("Track patch series in git")
@@ -1459,34 +1472,34 @@ fn git_series() -> Result<()> {
                     .arg_from_usage("<change>... 'Changes to remove (\"series\", \"base\", \"cover\")'"),
             ]).get_matches();
 
-    let repo = try!(git2::Repository::discover("."));
+    let mut out = Output::new();
 
-    match m.subcommand() {
-        ("", _) => try!(series(&repo)),
-        ("add", Some(ref sm)) => try!(add(&repo, &sm)),
-        ("base", Some(ref sm)) => try!(base(&repo, &sm)),
-        ("checkout", Some(ref sm)) => try!(checkout(&repo, &sm)),
-        ("commit", Some(ref sm)) => try!(commit_status(&repo, &sm, false)),
-        ("cover", Some(ref sm)) => try!(cover(&repo, &sm)),
-        ("delete", Some(ref sm)) => try!(delete(&repo, &sm)),
-        ("detach", _) => try!(detach(&repo)),
-        ("format", Some(ref sm)) => try!(format(&repo, &sm)),
-        ("log", Some(ref sm)) => try!(log(&repo, &sm)),
-        ("rebase", Some(ref sm)) => try!(rebase(&repo, &sm)),
-        ("req", Some(ref sm)) => try!(req(&repo, &sm)),
-        ("start", Some(ref sm)) => try!(start(&repo, &sm)),
-        ("status", Some(ref sm)) => try!(commit_status(&repo, &sm, true)),
-        ("unadd", Some(ref sm)) => try!(unadd(&repo, &sm)),
-        _ => unreachable!()
-    }
+    let err = || -> Result<()> {
+        let repo = try!(git2::Repository::discover("."));
+        match m.subcommand() {
+            ("", _) => series(&repo),
+            ("add", Some(ref sm)) => add(&repo, &sm),
+            ("base", Some(ref sm)) => base(&repo, &sm),
+            ("checkout", Some(ref sm)) => checkout(&repo, &sm),
+            ("commit", Some(ref sm)) => commit_status(&repo, &sm, false),
+            ("cover", Some(ref sm)) => cover(&repo, &sm),
+            ("delete", Some(ref sm)) => delete(&repo, &sm),
+            ("detach", _) => detach(&repo),
+            ("format", Some(ref sm)) => format(&mut out, &repo, &sm),
+            ("log", Some(ref sm)) => log(&mut out, &repo, &sm),
+            ("rebase", Some(ref sm)) => rebase(&repo, &sm),
+            ("req", Some(ref sm)) => req(&repo, &sm),
+            ("start", Some(ref sm)) => start(&repo, &sm),
+            ("status", Some(ref sm)) => commit_status(&repo, &sm, true),
+            ("unadd", Some(ref sm)) => unadd(&repo, &sm),
+            _ => unreachable!()
+        }
+    }();
 
-    Ok(())
-}
-
-fn main() {
-    if let Err(e) = git_series() {
+    if let Err(e) = err {
         let msg = e.to_string();
-        write!(std::io::stderr(), "{}{}", msg, if msg.ends_with('\n') { "" } else { "\n" }).unwrap();
+        out.write_err(&format!("{}{}", msg, if msg.ends_with('\n') { "" } else { "\n" }));
+        drop(out);
         std::process::exit(1);
     }
 }
