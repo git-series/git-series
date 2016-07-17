@@ -1,6 +1,8 @@
+extern crate ansi_term;
 extern crate chrono;
 #[macro_use]
 extern crate clap;
+extern crate colorparse;
 extern crate git2;
 extern crate isatty;
 #[macro_use]
@@ -14,6 +16,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write as IoWrite;
 use std::process::Command;
+use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
 use git2::{Config, Commit, Diff, ObjectType, Oid, Reference, Repository, TreeBuilder};
@@ -314,16 +317,22 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
     refs.sort();
     refs.dedup();
 
-    let config = try!(repo.config());
+    let config = try!(try!(repo.config()).snapshot());
     try!(out.auto_pager(&config, "branch", false));
+    let color_current = try!(out.get_color(&config, "branch", "current", "green"));
+    let color_plain = try!(out.get_color(&config, "branch", "plain", "normal"));
     for name in refs.iter() {
-        let star = if Some(name) == shead_target.as_ref() { '*' } else { ' ' };
+        let (star, color) = if Some(name) == shead_target.as_ref() {
+            ('*', color_current)
+        } else {
+            (' ', color_plain)
+        };
         let new = if try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, name)))).is_none() {
             " (new, no commits yet)"
         } else {
             ""
         };
-        try!(writeln!(out, "{} {}{}", star, name, new));
+        try!(writeln!(out, "{} {}{}", star, color.paint(name as &str), new));
     }
     if refs.is_empty() {
         try!(writeln!(out, "No series; use \"git series start <name>\" to start"));
@@ -622,6 +631,34 @@ impl Output {
         Ok(())
     }
 
+    // Get a color to write text with, taking git configuration into account.
+    //
+    // config: the configuration to determine the color from.
+    // command: the git command to act like.
+    // slot: the color "slot" of that git command to act like.
+    // default: the color to use if not configured.
+    fn get_color(&self, config: &Config, command: &str, slot: &str, default: &str) -> Result<Style> {
+        if !cfg!(unix) {
+            return Ok(Style::new());
+        }
+        let color_ui = try!(notfound_to_none(config.get_str("color.ui"))).unwrap_or("auto");
+        let color_cmd = try!(notfound_to_none(config.get_str(&format!("color.{}", command)))).unwrap_or(color_ui);
+        if color_cmd == "never" || Config::parse_bool(color_cmd) == Ok(false) {
+            return Ok(Style::new());
+        }
+        if self.pager.is_some() {
+            let color_pager = try!(notfound_to_none(config.get_bool(&format!("color.pager")))).unwrap_or(true);
+            if !color_pager {
+                return Ok(Style::new());
+            }
+        } else if !isatty::stdout_isatty() {
+            return Ok(Style::new());
+        }
+        let cfg = format!("color.{}.{}", command, slot);
+        let color = try!(notfound_to_none(config.get_str(&cfg))).unwrap_or(default);
+        colorparse::parse(color).map_err(|e| format!("Error parsing {}: {}", cfg, e).into())
+   }
+
     fn write_err(&mut self, msg: &str) {
         if self.include_stderr {
             if write!(self, "{}", msg).is_err() {
@@ -674,40 +711,57 @@ fn get_signature(config: &Config, which: &str) -> Result<git2::Signature<'static
     Ok(try!(git2::Signature::now(&name, &email)))
 }
 
-fn write_status(status: &mut String, diff: &Diff, heading: &str, show_hints: bool, hints: &[&str]) -> Result<bool> {
-    let mut changes = false;
-
-    try!(diff.foreach(&mut |delta, _| {
-        if !changes {
-            changes = true;
-            writeln!(status, "{}", heading).unwrap();
-            if show_hints {
-                for hint in hints {
-                    writeln!(status, "  ({})", hint).unwrap();
-                }
-            }
-            writeln!(status, "").unwrap();
-        }
-        writeln!(status, "        {:?}:   {}", delta.status(), delta.old_file().path().unwrap().to_str().unwrap()).unwrap();
-        true
-    }, None, None, None));
-
-    if changes {
-        writeln!(status, "").unwrap();
-    }
-
-    Ok(changes)
-}
-
 fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<()> {
-    let config = try!(repo.config());
+    let config = try!(try!(repo.config()).snapshot());
     let shead = match repo.find_reference(SHEAD_REF) {
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => { println!("No series; use \"git series start <name>\" to start"); return Ok(()); }
         result => try!(result),
     };
     let series_name = try!(shead_series_name(&shead));
-    let mut status = String::new();
-    writeln!(status, "On series {}", series_name).unwrap();
+
+    if do_status {
+        try!(out.auto_pager(&config, "status", false));
+    }
+    let get_color = |out: &Output, color: &str, default: &str| {
+        if do_status {
+            out.get_color(&config, "status", color, default)
+        } else {
+            Ok(Style::new())
+        }
+    };
+    let color_normal = Style::new();
+    let color_header = try!(get_color(out, "header", "normal"));
+    let color_updated = try!(get_color(out, "updated", "green"));
+    let color_changed = try!(get_color(out, "changed", "red"));
+
+    let write_status = |status: &mut Vec<ansi_term::ANSIString>, diff: &Diff, heading: &str, color: &Style, show_hints: bool, hints: &[&str]| -> Result<bool> {
+        let mut changes = false;
+
+        try!(diff.foreach(&mut |delta, _| {
+            if !changes {
+                changes = true;
+                status.push(color_header.paint(format!("{}\n", heading.to_string())));
+                if show_hints {
+                    for hint in hints {
+                        status.push(color_header.paint(format!("  ({})\n", hint)));
+                    }
+                }
+                status.push(color_normal.paint("\n"));
+            }
+            status.push(color_normal.paint("        "));
+            status.push(color.paint(format!("{:?}:   {}\n", delta.status(), delta.old_file().path().unwrap().to_str().unwrap())));
+            true
+        }, None, None, None));
+
+        if changes {
+            status.push(color_normal.paint("\n"));
+        }
+
+        Ok(changes)
+    };
+
+    let mut status = Vec::new();
+    status.push(color_header.paint(format!("On series {}\n", series_name)));
 
     let mut internals = try!(Internals::read(repo));
     let working_tree = try!(repo.find_tree(try!(internals.working.write())));
@@ -716,7 +770,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let shead_commit = match shead.resolve() {
         Ok(r) => Some(try!(peel_to_commit(r))),
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
-            writeln!(status, "\nInitial series commit\n").unwrap();
+            status.push(color_header.paint("\nInitial series commit\n"));
             None
         }
         Err(e) => try!(Err(e)),
@@ -730,37 +784,37 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
 
     let (changes, tree, diff) = if commit_all {
         let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&working_tree), None));
-        let changes = try!(write_status(&mut status, &diff, "Changes to be committed:", false, &[]));
+        let changes = try!(write_status(&mut status, &diff, "Changes to be committed:", &color_normal, false, &[]));
         if !changes {
-            writeln!(status, "nothing to commit; series unchanged").unwrap();
+            status.push(color_normal.paint("nothing to commit; series unchanged\n"));
         }
         (changes, working_tree, diff)
     } else {
         let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&staged_tree), None));
         let changes_to_be_committed = try!(write_status(&mut status, &diff,
-                "Changes to be committed:", do_status,
+                "Changes to be committed:", &color_updated, do_status,
                 &["use \"git series commit\" to commit",
                   "use \"git series unadd <file>...\" to undo add"]));
 
         let diff_not_staged = try!(repo.diff_tree_to_tree(Some(&staged_tree), Some(&working_tree), None));
         let changes_not_staged = try!(write_status(&mut status, &diff_not_staged,
-                "Changes not staged for commit:", do_status,
+                "Changes not staged for commit:", &color_changed, do_status,
                 &["use \"git series add <file>...\" to update what will be committed"]));
 
         if !changes_to_be_committed {
             if changes_not_staged {
-                writeln!(status, "no changes added to commit (use \"git series add\" or \"git series commit -a\")").unwrap();
+                status.push(color_normal.paint("no changes added to commit (use \"git series add\" or \"git series commit -a\")\n"));
             } else {
-                writeln!(status, "nothing to commit; series unchanged").unwrap();
+                status.push(color_normal.paint("nothing to commit; series unchanged\n"));
             }
         }
 
         (changes_to_be_committed, staged_tree, diff)
     };
 
+    let status = ansi_term::ANSIStrings(&status).to_string();
     if do_status || !changes {
         if do_status {
-            try!(out.auto_pager(&config, "status", false));
             try!(write!(out, "{}", status));
         } else {
             return Err(status.into());
@@ -1126,8 +1180,9 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(repo.config());
+    let config = try!(try!(repo.config()).snapshot());
     try!(out.auto_pager(&config, "log", true));
+    let color_commit = try!(out.get_color(&config, "diff", "commit", "yellow"));
 
     let mut revwalk = try!(repo.revwalk());
     revwalk.simplify_first_parent();
@@ -1144,7 +1199,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let first_parent_id = try!(commit.parent_id(0).map_err(|e| format!("Malformed series commit {}: {}", oid, e)));
         let first_series_commit = tree.iter().find(|entry| entry.id() == first_parent_id).is_some();
 
-        try!(writeln!(out, "commit {}", oid));
+        try!(writeln!(out, "{}", color_commit.paint(format!("commit {}", oid))));
         try!(writeln!(out, "Author: {} <{}>", author.name().unwrap(), author.email().unwrap()));
         try!(writeln!(out, "Date:   {}\n", date_822(author.when())));
         for line in commit.message().unwrap().lines() {
