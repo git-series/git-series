@@ -1102,11 +1102,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let message_id_suffix = format!("{}.git-series.{}", author.when().seconds(), author_email);
 
     let cover_entry = stree.get_name("cover");
-    let root_message_id = if cover_entry.is_some() {
-        format!("<cover.{}.{}>", shead_commit.id(), message_id_suffix)
-    } else {
-        format!("<{}.{}>", commits.first().unwrap().id(), message_id_suffix)
-    };
+    let mut in_reply_to_message_id = None;
 
     let signature = mail_signature();
 
@@ -1135,7 +1131,9 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             out = try!(patch_file("0000-cover-letter.patch"));
         }
         try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
-        try!(writeln!(out, "Message-Id: {}", root_message_id));
+        let cover_message_id = format!("<cover.{}.{}>", shead_commit.id(), message_id_suffix);
+        try!(writeln!(out, "Message-Id: {}", cover_message_id));
+        in_reply_to_message_id = Some(cover_message_id);
         try!(writeln!(out, "From: {} <{}>", author_name, author_email));
         try!(writeln!(out, "Date: {}", date_822(author.when())));
         try!(writeln!(out, "Subject: [PATCH 0/{}] {}\n", commits.len(), subject));
@@ -1157,7 +1155,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit_id = commit.id();
         let commit_author = commit.author();
         let summary_sanitized = sanitize_summary(&subject);
-        let message_id = format!("<{}.{}>", commit_id, message_id_suffix);
+        let this_message_id = format!("<{}.{}>", commit_id, message_id_suffix);
         let parent = try!(commit.parent(0));
         let diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
         let stats = try!(diffstat(&diff));
@@ -1166,9 +1164,14 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             out = try!(patch_file(&format!("{:04}-{}.patch", commit_num+1, summary_sanitized)));
         }
         try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", commit_id));
-        try!(writeln!(out, "Message-Id: {}", message_id));
-        try!(writeln!(out, "In-Reply-To: {}", root_message_id));
-        try!(writeln!(out, "References: {}", root_message_id));
+        try!(writeln!(out, "Message-Id: {}", this_message_id));
+        if let Some(ref message_id) = in_reply_to_message_id {
+            try!(writeln!(out, "In-Reply-To: {}", message_id));
+            try!(writeln!(out, "References: {}", message_id));
+        }
+        if commit_num == 0 && cover_entry.is_none() {
+            in_reply_to_message_id = Some(this_message_id);
+        }
         try!(writeln!(out, "From: {} <{}>", author_name, author_email));
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
         try!(writeln!(out, "Subject: [PATCH {}/{}] {}\n", commit_num+1, commits.len(), subject));
