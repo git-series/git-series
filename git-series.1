@@ -110,7 +110,7 @@ Any changes in progress, staged or unstaged, will remain intact.
 To start working on the branch again, use \fBgit series checkout\fR.
 
 .TP
-\fBgit series format\fR [\fB--stdout\fR]
+\fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] [\fB--stdout\fR]
 Prepare the patch series to send via email.
 This creates one file per patch in the series, plus one additional file for the
 cover letter if any.
@@ -123,6 +123,11 @@ If the series has a cover letter, all of the patches will include headers to
 make them a reply to the cover letter; otherwise, all of the patches will
 include headers to make them a reply to the first patch.
 .RS
+.TP
+.BI --in-reply-to= Message-Id
+Make the first mail a reply to the specified Message-Id.
+The Message-Id may include or omit the surrounding angle brackets; git-series
+will add them if not present.
 .TP
 .B --stdout
 Write the entire patch series to stdout rather than to separate patch files.

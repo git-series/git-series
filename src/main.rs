@@ -1102,7 +1102,12 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let message_id_suffix = format!("{}.git-series.{}", author.when().seconds(), author_email);
 
     let cover_entry = stree.get_name("cover");
-    let mut in_reply_to_message_id = None;
+    let mut in_reply_to_message_id = m.value_of("in-reply-to").map(|v| {
+        format!("{}{}{}",
+                if v.starts_with('<') { "" } else { "<" },
+                v,
+                if v.ends_with('>') { "" } else { ">" })
+    });
 
     let signature = mail_signature();
 
@@ -1133,6 +1138,10 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
         let cover_message_id = format!("<cover.{}.{}>", shead_commit.id(), message_id_suffix);
         try!(writeln!(out, "Message-Id: {}", cover_message_id));
+        if let Some(ref message_id) = in_reply_to_message_id {
+            try!(writeln!(out, "In-Reply-To: {}", message_id));
+            try!(writeln!(out, "References: {}", message_id));
+        }
         in_reply_to_message_id = Some(cover_message_id);
         try!(writeln!(out, "From: {} <{}>", author_name, author_email));
         try!(writeln!(out, "Date: {}", date_822(author.when())));
@@ -1522,6 +1531,7 @@ fn main() {
                     .about("Stop working on any patch series"),
                 SubCommand::with_name("format")
                     .about("Prepare patch series for email")
+                    .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'"),
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
