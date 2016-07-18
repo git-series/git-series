@@ -1062,6 +1062,14 @@ fn mail_signature() -> String {
     format!("-- \ngit-series {}", crate_version!())
 }
 
+fn ensure_nl(s: &str) -> &'static str {
+    if !s.ends_with('\n') {
+        "\n"
+    } else {
+        ""
+    }
+}
+
 fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
     let to_stdout = m.is_present("stdout");
@@ -1168,7 +1176,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
         try!(writeln!(out, "Subject: [PATCH {}/{}] {}\n", commit_num+1, commits.len(), subject));
         if !body.is_empty() {
-            try!(writeln!(out, "{}", body));
+            try!(write!(out, "{}{}", body, ensure_nl(&body)));
         }
         try!(writeln!(out, "---"));
         try!(writeln!(out, "{}", stats));
@@ -1565,7 +1573,7 @@ fn main() {
 
     if let Err(e) = err {
         let msg = e.to_string();
-        out.write_err(&format!("{}{}", msg, if msg.ends_with('\n') { "" } else { "\n" }));
+        out.write_err(&format!("{}{}", msg, ensure_nl(&msg)));
         drop(out);
         std::process::exit(1);
     }
