@@ -1521,8 +1521,8 @@ fn main() {
                 SubCommand::with_name("detach")
                     .about("Stop working on any patch series"),
                 SubCommand::with_name("format")
-                    .arg_from_usage("--stdout 'Write patches to stdout rather than files.")
-                    .about("Prepare patch series for email"),
+                    .about("Prepare patch series for email")
+                    .arg_from_usage("--stdout 'Write patches to stdout rather than files'"),
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
                     .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'"),
