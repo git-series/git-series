@@ -1147,11 +1147,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         try!(writeln!(out, "{}", signature));
     }
 
-    let mut need_sep = cover_entry.is_some();
     for (commit_num, commit) in commits.iter().enumerate() {
-        if !need_sep {
-            need_sep = true;
-        } else if to_stdout {
+        if to_stdout && (commit_num > 0 || cover_entry.is_some()) {
             try!(writeln!(out, ""));
         }
 
