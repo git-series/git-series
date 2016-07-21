@@ -56,6 +56,10 @@ Getting started
 
 - Use `git series start seriesname` to start a patch series seriesname.
 
+- Use `git series base somecommit` to set the base commit for the series.
+  (This is the upstream commit you based the series on, not the first patch in
+  the series.)
+
 - Use normal git commands to commit changes.
 
 - Use `git series status` to check what has changed.
