@@ -39,28 +39,36 @@ In this documentation, a "git-series commit" refers to a commit corresponding
 to a version of an entire patch series, as distinguished from a commit
 corresponding to one patch within a patch series.
 
-The first parent of each git-series commit always points to the previous
-version of the patch series, if any.  The remaining parents of each git-series
-commit correspond to commits referenced as gitlinks (tree entries with mode
-160000) within the commit's tree.  This ensures that git can reach all of those
-commits.  (Note that git's traversal algorithm does not follow gitlink commits
-within tree objects, so without these additional parent links, git would
-consider these gitlink commits unreachable and discard them.)
+A git-series commit can have two types of parent commits: those connecting the
+history of the patch series, and those referencing gitlink commits that also
+appear in the git-series commit's tree.  A git-series commit can have any
+number of either type of parent, but all of the parents connecting the history
+of the patch series will always appear before any of the parents referencing
+gitlink commits.
 
-The second and subsequent parents of each git-series commit do not appear in
-any particular order; do not assume that the `series` object or any other
-gitlink appears at any particular position within the parents list.  These
-parents exist only to make commits reachable and transferable by git.  Always
-look up commits via named tree entries within the git-series commit's tree
-object.
+The parents connecting the history of the patch series, if any, point to
+previous git-series commits representing previous versions of the patch series;
+a git-series commit with more than one such parent represents a git-series
+merge commit.  The remaining parents of each git-series commit correspond to
+commits referenced as gitlinks (tree entries with mode 160000) within the
+commit's tree; this ensures that git can reach all of those commits.  (Note
+that git's traversal algorithm does not follow gitlink commits within tree
+objects, so without these additional parent links, git would consider these
+gitlink commits unreachable and discard them.)
+
+The parents of each git-series commit that reference gitlinks in that
+git-series commit's tree do not appear in any particular order; do not assume
+that the `series` object or any other gitlink appears at any particular
+position within the parents list.  These parents exist only to make commits
+reachable and transferable by git.  Always look up commits via named tree
+entries within the git-series commit's tree object.
 
 In the root git-series commit, all the parent commits correspond to gitlinks
-within the tree.  This will not occur for any non-root commit of a git-series.
-Algorithms trying to walk from a git-series commit to its root should detect
-the root git-series commit by checking if the first parent appears in the
-git-series commit's tree.  (This does not require a recursive tree walk; the
-first parent of the git-series root will always appear in the top-level tree
-object.)
+within the git-series commit's tree.  This will not occur for any non-root
+commit of a git-series.  Algorithms trying to walk git-series commits should
+filter out parents that appear in the git-series commit's tree.  (This does not
+require a recursive tree walk; the gitlinks within the git-series commit's tree
+will appear in the top-level tree object.)
 
 git-series tree entries
 -----------------------

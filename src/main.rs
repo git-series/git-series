@@ -1202,19 +1202,42 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let color_commit = try!(out.get_color(&config, "diff", "commit", "yellow"));
 
     let mut revwalk = try!(repo.revwalk());
-    revwalk.simplify_first_parent();
     try!(revwalk.push_ref(SHEAD_REF));
 
-    let show_diff = m.is_present("patch");
-
-    for oid in revwalk {
+    // Walk once before sorting, to find all the commits to hide. Revwalk doesn't support hiding on
+    // the fly when sorted.
+    let mut hidden_ids = std::collections::HashSet::new();
+    while let Some(oid) = revwalk.next() {
         let oid = try!(oid);
         let commit = try!(repo.find_commit(oid));
         let tree = try!(commit.tree());
-        let author = commit.author();
+        for parent_id in commit.parent_ids() {
+            if tree.iter().find(|entry| entry.id() == parent_id).is_some() {
+                try!(revwalk.hide(parent_id));
+                hidden_ids.insert(parent_id);
+            }
+        }
+    }
 
-        let first_parent_id = try!(commit.parent_id(0).map_err(|e| format!("Malformed series commit {}: {}", oid, e)));
-        let first_series_commit = tree.iter().find(|entry| entry.id() == first_parent_id).is_some();
+    // set_sorting resets the revwalk
+    revwalk.set_sorting(git2::SORT_TOPOLOGICAL);
+    try!(revwalk.push_ref(SHEAD_REF));
+    for id in hidden_ids {
+        try!(revwalk.hide(id));
+    }
+
+    let show_diff = m.is_present("patch");
+
+    let mut first = true;
+    for oid in revwalk {
+        if first {
+            first = false;
+        } else {
+            try!(writeln!(out, ""));
+        }
+        let oid = try!(oid);
+        let commit = try!(repo.find_commit(oid));
+        let author = commit.author();
 
         try!(writeln!(out, "{}", color_commit.paint(format!("commit {}", oid))));
         try!(writeln!(out, "Author: {} <{}>", author.name().unwrap(), author.email().unwrap()));
@@ -1222,21 +1245,23 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         for line in commit.message().unwrap().lines() {
             try!(writeln!(out, "    {}", line));
         }
-        if show_diff {
-            try!(writeln!(out, ""));
-            let parent_tree = if first_series_commit {
-                None
-            } else {
-                Some(try!(try!(repo.find_commit(first_parent_id)).tree()))
-            };
-            let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
-            try!(write_diff(out, &diff));
-        }
 
-        if first_series_commit {
-            break;
-        } else {
+        if show_diff {
+            let tree = try!(commit.tree());
+            let parent_ids: Vec<_> = commit.parent_ids().take_while(|parent_id| tree.iter().find(|entry| &entry.id() == parent_id).is_none()).collect();
+
             try!(writeln!(out, ""));
+            if parent_ids.len() > 1 {
+                try!(writeln!(out, "(Diffs of series merge commits not yet supported)"));
+            } else {
+                let parent_tree = if parent_ids.len() == 0 {
+                    None
+                } else {
+                    Some(try!(try!(repo.find_commit(parent_ids[0])).tree()))
+                };
+                let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
+                try!(write_diff(out, &diff));
+            }
         }
     }
 
