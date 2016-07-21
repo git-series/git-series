@@ -161,8 +161,9 @@ impl<'repo> Internals<'repo> {
     }
 
     fn read_series(repo: &'repo Repository, series_name: &str) -> Result<Self> {
+        let committed_id = try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, series_name))));
         let maybe_get_ref = |prefix: &str| -> Result<TreeBuilder<'repo>> {
-            match try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", prefix, series_name)))) {
+            match try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", prefix, series_name)))).or(committed_id) {
                 Some(id) => {
                     let c = try!(repo.find_commit(id));
                     let t = try!(c.tree());
@@ -178,7 +179,7 @@ impl<'repo> Internals<'repo> {
     }
 
     fn exists(repo: &'repo Repository, series_name: &str) -> Result<bool> {
-        for prefix in [STAGED_PREFIX, WORKING_PREFIX].iter() {
+        for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
             let prefixed_name = format!("{}{}", prefix, series_name);
             if try!(notfound_to_none(repo.refname_to_id(&prefixed_name))).is_some() {
                 return Ok(true);
@@ -342,12 +343,10 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
 
 fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let name = m.value_of("name").unwrap();
-    let prefixed_name = &[SERIES_PREFIX, name].concat();
-    let branch_exists = try!(notfound_to_none(repo.refname_to_id(&prefixed_name))).is_some()
-                        || try!(Internals::exists(repo, name));
-    if branch_exists {
+    if try!(Internals::exists(repo, name)) {
         return Err(format!("Series {} already exists.\nUse checkout to resume working on an existing patch series.", name).into());
     }
+    let prefixed_name = &[SERIES_PREFIX, name].concat();
     try!(repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series start {}", name)));
 
     let internals = try!(Internals::read(repo));
@@ -408,16 +407,12 @@ fn checkout(repo: &Repository, m: &ArgMatches) -> Result<()> {
         s => { return Err(format!("{:?} in progress; cannot checkout patch series", s).into()); }
     }
     let name = m.value_of("name").unwrap();
-    let prefixed_name = &[SERIES_PREFIX, name].concat();
-    // Make sure the ref exists
-    let branch_exists = try!(notfound_to_none(repo.refname_to_id(&prefixed_name))).is_some()
-                        || try!(Internals::exists(repo, name));
-    if !branch_exists {
+    if !try!(Internals::exists(repo, name)) {
         return Err(format!("Series {} does not exist.\nUse \"git series start <name>\" to start a new patch series.", name).into());
     }
 
     let internals = try!(Internals::read_series(repo, name));
-    let new_head_id = try!(try!(internals.working.get("series")).ok_or(format!("Could not find \"series\" in working version of \"{}\"", name))).id();
+    let new_head_id = try!(try!(internals.working.get("series")).ok_or(format!("Could not find \"series\" in \"{}\"", name))).id();
     let new_head = try!(repo.find_commit(new_head_id)).into_object();
 
     try!(checkout_tree(repo, &new_head));
@@ -427,7 +422,9 @@ fn checkout(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let head_id = head_commit.as_object().id();
     println!("Previous HEAD position was {}", try!(commit_summarize(&repo, head_id)));
 
+    let prefixed_name = &[SERIES_PREFIX, name].concat();
     try!(repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series checkout {}", name)));
+    try!(internals.write(repo));
 
     // git status parses this reflog string; the prefix must remain "checkout: moving from ".
     try!(repo.reference("HEAD", new_head_id, true, &format!("checkout: moving from {} to {} (git series checkout {})", head_id, new_head_id, name)));
