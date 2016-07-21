@@ -1,6 +1,6 @@
 [root]
 name = "git-series"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "ansi_term 0.7.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",
