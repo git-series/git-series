@@ -1212,7 +1212,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit = try!(repo.find_commit(oid));
         let tree = try!(commit.tree());
         for parent_id in commit.parent_ids() {
-            if tree.iter().find(|entry| entry.id() == parent_id).is_some() {
+            if tree.get_id(parent_id).is_some() {
                 try!(revwalk.hide(parent_id));
                 hidden_ids.insert(parent_id);
             }
@@ -1248,7 +1248,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 
         if show_diff {
             let tree = try!(commit.tree());
-            let parent_ids: Vec<_> = commit.parent_ids().take_while(|parent_id| tree.iter().find(|entry| &entry.id() == parent_id).is_none()).collect();
+            let parent_ids: Vec<_> = commit.parent_ids().take_while(|parent_id| tree.get_id(*parent_id).is_none()).collect();
 
             try!(writeln!(out, ""));
             if parent_ids.len() > 1 {
