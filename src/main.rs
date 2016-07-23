@@ -1526,6 +1526,7 @@ fn main() {
             .author("Josh Triplett <josh@joshtriplett.org>")
             .version(crate_version!())
             .global_setting(AppSettings::ColoredHelp)
+            .global_setting(AppSettings::UnifiedHelpMessage)
             .global_setting(AppSettings::VersionlessSubcommands)
             .subcommands(vec![
                 SubCommand::with_name("add")
