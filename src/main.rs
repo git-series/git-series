@@ -1106,6 +1106,10 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
                 if v.ends_with('>') { "" } else { ">" })
     });
 
+    let version = m.value_of("reroll-count");
+    let subject_patch = version.map_or("PATCH".to_string(), |n| format!("PATCH v{}", n));
+    let file_prefix = version.map_or("".to_string(), |n| format!("v{}-", n));
+
     let signature = mail_signature();
 
     let mut out : Box<IoWrite> = if to_stdout {
@@ -1115,6 +1119,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         Box::new(std::io::stdout())
     };
     let patch_file = |name: &str| -> Result<Box<IoWrite>> {
+        let name = format!("{}{}", file_prefix, name);
         println!("{}", name);
         Ok(Box::new(try!(File::create(name))))
     };
@@ -1142,7 +1147,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         in_reply_to_message_id = Some(cover_message_id);
         try!(writeln!(out, "From: {} <{}>", author_name, author_email));
         try!(writeln!(out, "Date: {}", date_822(author.when())));
-        try!(writeln!(out, "Subject: [PATCH 0/{}] {}\n", commits.len(), subject));
+        try!(writeln!(out, "Subject: [{} 0/{}] {}\n", subject_patch, commits.len(), subject));
         if !body.is_empty() {
             try!(writeln!(out, "{}", body));
         }
@@ -1180,7 +1185,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         }
         try!(writeln!(out, "From: {} <{}>", author_name, author_email));
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
-        try!(writeln!(out, "Subject: [PATCH {}/{}] {}\n", commit_num+1, commits.len(), subject));
+        try!(writeln!(out, "Subject: [{} {}/{}] {}\n", subject_patch, commit_num+1, commits.len(), subject));
         if !body.is_empty() {
             try!(write!(out, "{}{}", body, ensure_nl(&body)));
         }
@@ -1555,6 +1560,7 @@ fn main() {
                 SubCommand::with_name("format")
                     .about("Prepare patch series for email")
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
+                    .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'"),
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
