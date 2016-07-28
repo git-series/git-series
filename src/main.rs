@@ -866,7 +866,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             }
             if m.is_present("verbose") {
                 try!(writeln!(file, "{}\n{}", SCISSOR_LINE, SCISSOR_COMMENT));
-                try!(write_diff(&mut file, &diff));
+                try!(write_diff(&mut file, &DiffColors::plain(), &diff));
             }
             drop(file);
             try!(run_editor(&config, &filename));
@@ -1043,21 +1043,94 @@ fn split_message(message: &str) -> (&str, &str) {
     (subject, body)
 }
 
+struct DiffColors {
+    commit: Style,
+    meta: Style,
+    frag: Style,
+    func: Style,
+    context: Style,
+    old: Style,
+    new: Style,
+}
+
+impl DiffColors {
+    fn plain() -> Self {
+        DiffColors {
+            commit: Style::new(),
+            meta: Style::new(),
+            frag: Style::new(),
+            func: Style::new(),
+            context: Style::new(),
+            old: Style::new(),
+            new: Style::new(),
+        }
+    }
+
+    fn new(out: &Output, config: &Config) -> Result<Self> {
+        Ok(DiffColors {
+            commit: try!(out.get_color(&config, "diff", "commit", "yellow")),
+            meta: try!(out.get_color(&config, "diff", "meta", "bold")),
+            frag: try!(out.get_color(&config, "diff", "frag", "cyan")),
+            func: try!(out.get_color(&config, "diff", "func", "normal")),
+            context: try!(out.get_color(&config, "diff", "context", "normal")),
+            old: try!(out.get_color(&config, "diff", "old", "red")),
+            new: try!(out.get_color(&config, "diff", "new", "green")),
+        })
+    }
+}
+
 fn diffstat(diff: &Diff) -> Result<String> {
     let stats = try!(diff.stats());
     let stats_buf = try!(stats.to_buf(git2::DIFF_STATS_FULL|git2::DIFF_STATS_INCLUDE_SUMMARY, 72));
     Ok(stats_buf.as_str().unwrap().to_string())
 }
 
-fn write_diff<W: IoWrite>(f: &mut W, diff: &Diff) -> Result<()> {
+fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff) -> Result<()> {
     let mut err = Ok(());
+    let normal = Style::new();
     try!(diff.print(git2::DiffFormat::Patch, |_, _, l| {
         err = || -> Result<()> {
             let o = l.origin();
+            let style = match o {
+                ' '|'=' => colors.context,
+                '-'|'<' => colors.old,
+                '+'|'>' => colors.new,
+                'F' => colors.meta,
+                'H' => colors.frag,
+                _ => normal,
+            };
+            let obyte = [o as u8];
+            let mut v = Vec::new();
             if o == '+' || o == '-' || o == ' ' {
-                try!(f.write_all(&[o as u8]));
+                v.push(style.paint(&obyte[..]));
             }
-            try!(f.write_all(l.content()));
+            if o == 'H' {
+                // Split frag and func
+                let line = l.content();
+                let at = &|&(_,&c): &(usize, &u8)| c == b'@';
+                let not_at = &|&(_,&c): &(usize, &u8)| c != b'@';
+                match line.iter().enumerate().skip_while(at).skip_while(not_at).skip_while(at).nth(1).unwrap_or((0,&b'\n')) {
+                    (_,&c) if c == b'\n' => v.push(style.paint(&line[..line.len()-1])),
+                    (pos,_) => {
+                        v.push(style.paint(&line[..pos-1]));
+                        v.push(normal.paint(" ".as_bytes()));
+                        v.push(colors.func.paint(&line[pos..line.len()-1]));
+                    },
+                }
+                v.push(normal.paint("\n".as_bytes()));
+            } else {
+                // The less pager resets ANSI colors at each newline, so emit colors separately for
+                // each line.
+                for (n, line) in l.content().split(|c| *c == b'\n').enumerate() {
+                    if n != 0 {
+                        v.push(normal.paint("\n".as_bytes()));
+                    }
+                    if !line.is_empty() {
+                        v.push(style.paint(line));
+                    }
+                }
+            }
+            try!(ansi_term::ANSIByteStrings(&v).write_to(f));
             Ok(())
         }();
         err.is_ok()
@@ -1086,7 +1159,7 @@ fn ensure_nl(s: &str) -> &'static str {
 }
 
 fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(repo.config());
+    let config = try!(try!(repo.config()).snapshot());
     let to_stdout = m.is_present("stdout");
     let no_from = m.is_present("no-from");
 
@@ -1134,8 +1207,15 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let signature = mail_signature();
 
-    let mut out : Box<IoWrite> = if to_stdout {
+    if to_stdout {
         try!(out.auto_pager(&config, "format-patch", true));
+    }
+    let diffcolors = if to_stdout {
+        try!(DiffColors::new(out, &config))
+    } else {
+        DiffColors::plain()
+    };
+    let mut out : Box<IoWrite> = if to_stdout {
         Box::new(out)
     } else {
         Box::new(std::io::stdout())
@@ -1234,7 +1314,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         }
         try!(writeln!(out, "---"));
         try!(writeln!(out, "{}", stats));
-        try!(write_diff(&mut out, &diff));
+        try!(write_diff(&mut out, &diffcolors, &diff));
         if first_mail {
             try!(writeln!(out, "\nbase-commit: {}", base.id()));
         }
@@ -1247,7 +1327,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(try!(repo.config()).snapshot());
     try!(out.auto_pager(&config, "log", true));
-    let color_commit = try!(out.get_color(&config, "diff", "commit", "yellow"));
+    let diffcolors = try!(DiffColors::new(out, &config));
 
     let mut revwalk = try!(repo.revwalk());
     try!(revwalk.push_ref(SHEAD_REF));
@@ -1287,7 +1367,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit = try!(repo.find_commit(oid));
         let author = commit.author();
 
-        try!(writeln!(out, "{}", color_commit.paint(format!("commit {}", oid))));
+        try!(writeln!(out, "{}", diffcolors.commit.paint(format!("commit {}", oid))));
         try!(writeln!(out, "Author: {} <{}>", author.name().unwrap(), author.email().unwrap()));
         try!(writeln!(out, "Date:   {}\n", date_822(author.when())));
         for line in commit.message().unwrap().lines() {
@@ -1308,7 +1388,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
                     Some(try!(try!(repo.find_commit(parent_ids[0])).tree()))
                 };
                 let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
-                try!(write_diff(out, &diff));
+                try!(write_diff(out, &diffcolors, &diff));
             }
         }
     }
@@ -1446,7 +1526,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(repo.config());
+    let config = try!(try!(repo.config()).snapshot());
     let shead = try!(repo.find_reference(SHEAD_REF));
     let shead_commit = try!(peel_to_commit(try!(shead.resolve())));
     let stree = try!(shead_commit.tree());
@@ -1547,6 +1627,8 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let stats = try!(diffstat(&diff));
 
     try!(out.auto_pager(&config, "request-pull", true));
+    let diffcolors = try!(DiffColors::new(out, &config));
+
     try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
     try!(writeln!(out, "Message-Id: {}", message_id));
     try!(writeln!(out, "From: {} <{}>", author.name().unwrap(), author_email));
@@ -1569,7 +1651,7 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(writeln!(out, "{}", shortlog(&mut commits)));
     try!(writeln!(out, "{}", stats));
     if m.is_present("patch") {
-        try!(write_diff(out, &diff));
+        try!(write_diff(out, &diffcolors, &diff));
     }
     try!(writeln!(out, "{}", mail_signature()));
 
