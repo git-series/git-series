@@ -111,6 +111,7 @@ To start working on the branch again, use \fBgit series checkout\fR.
 
 .TP
 \fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] \
+[\fB--no-from\fR] \
 [\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] [\fB--stdout\fR]
 Prepare the patch series to send via email.
 This creates one file per patch in the series, plus one additional file for the
@@ -129,6 +130,15 @@ include headers to make them a reply to the first patch.
 Make the first mail a reply to the specified Message-Id.
 The Message-Id may include or omit the surrounding angle brackets; git-series
 will add them if not present.
+.TP
+.B --no-from
+By default, \fBgit series format\fR includes a "From:" line in the mail body
+for the commit author when formatting commits you didn't write; this allows you
+to send the patches as emails from your own address while preserving authorship
+information for each patch.
+\fBgit series format --no-from\fR will instead use the commit author as the
+"From:" address for each patch mail.
+Use this when producing patch files for purposes other than email.
 .TP
 \fB-v\fR \fIN\fR | \fB--reroll-count=\fB\fIN\fR
 Mark the patch series as PATCH v\fIN\fR.

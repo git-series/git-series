@@ -1070,6 +1070,7 @@ fn ensure_nl(s: &str) -> &'static str {
 fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(repo.config());
     let to_stdout = m.is_present("stdout");
+    let no_from = m.is_present("no-from");
 
     let shead_commit = try!(peel_to_commit(try!(try!(repo.find_reference(SHEAD_REF)).resolve())));
     let stree = try!(shead_commit.tree());
@@ -1165,6 +1166,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let (subject, body) = split_message(message);
         let commit_id = commit.id();
         let commit_author = commit.author();
+        let commit_author_name = commit_author.name().unwrap();
+        let commit_author_email = commit_author.email().unwrap();
         let summary_sanitized = sanitize_summary(&subject);
         let this_message_id = format!("<{}.{}>", commit_id, message_id_suffix);
         let parent = try!(commit.parent(0));
@@ -1183,9 +1186,17 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         if commit_num == 0 && cover_entry.is_none() {
             in_reply_to_message_id = Some(this_message_id);
         }
-        try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
+        if no_from {
+            try!(writeln!(out, "From: {} <{}>", commit_author_name, commit_author_email));
+        } else {
+            try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
+        }
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
         try!(writeln!(out, "Subject: [{} {}/{}] {}\n", subject_patch, commit_num+1, commits.len(), subject));
+
+        if !no_from && (commit_author_name != committer_name || commit_author_email != committer_email) {
+            try!(writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email));
+        }
         if !body.is_empty() {
             try!(write!(out, "{}{}", body, ensure_nl(&body)));
         }
@@ -1560,6 +1571,7 @@ fn main() {
                 SubCommand::with_name("format")
                     .about("Prepare patch series for email")
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
+                    .arg_from_usage("--no-from 'Don't include in-body \"From:\" headers when formatting patches authored by others'")
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'"),
                 SubCommand::with_name("log")
