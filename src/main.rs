@@ -1093,10 +1093,10 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         return Err("No patches to format; series and base identical.".into());
     }
 
-    let author = try!(get_signature(&config, "AUTHOR"));
-    let author_name = author.name().unwrap();
-    let author_email = author.email().unwrap();
-    let message_id_suffix = format!("{}.git-series.{}", author.when().seconds(), author_email);
+    let committer = try!(get_signature(&config, "COMMITTER"));
+    let committer_name = committer.name().unwrap();
+    let committer_email = committer.email().unwrap();
+    let message_id_suffix = format!("{}.git-series.{}", committer.when().seconds(), committer_email);
 
     let cover_entry = stree.get_name("cover");
     let mut in_reply_to_message_id = m.value_of("in-reply-to").map(|v| {
@@ -1145,8 +1145,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             try!(writeln!(out, "References: {}", message_id));
         }
         in_reply_to_message_id = Some(cover_message_id);
-        try!(writeln!(out, "From: {} <{}>", author_name, author_email));
-        try!(writeln!(out, "Date: {}", date_822(author.when())));
+        try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
+        try!(writeln!(out, "Date: {}", date_822(committer.when())));
         try!(writeln!(out, "Subject: [{} 0/{}] {}\n", subject_patch, commits.len(), subject));
         if !body.is_empty() {
             try!(writeln!(out, "{}", body));
@@ -1183,7 +1183,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         if commit_num == 0 && cover_entry.is_none() {
             in_reply_to_message_id = Some(this_message_id);
         }
-        try!(writeln!(out, "From: {} <{}>", author_name, author_email));
+        try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
         try!(writeln!(out, "Subject: [{} {}/{}] {}\n", subject_patch, commit_num+1, commits.len(), subject));
         if !body.is_empty() {
