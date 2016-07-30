@@ -66,10 +66,14 @@ Getting started
 
 - Use `git series cover` to add or edit a cover letter.
 
-- Use `git series add` and `git series commit` (or `git series commit -a`) to
-  commit changes to the patch series.
-
 - Use `git series rebase -i` to help rework or reorganize the patch series.
+
+- Use `git series add` and `git series commit` (or `git series commit -a`) to
+  commit changes to the patch series.  You can do this whenever you've changed
+  the base or cover letter, or whenever you've changed HEAD to a new commit.
+  Make a series commit whenever you've made a semantic change to the patch
+  series that you want to record, such as rebasing on a new upstream version,
+  reorganizing patches, or incorporating feedback.
 
 - Use `git series format` to prepare the patch series to send via email, or
   use `git series req` to prepare a "please pull" mail (after pushing the
