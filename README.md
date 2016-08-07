@@ -51,8 +51,8 @@ change the `--root`.  You may also want to install the included manpage,
 
 If you'd like to package git-series for your distribution, please contact me.
 
-Getting started
-===============
+Overview of commands
+====================
 
 - Use `git series start seriesname` to start a patch series seriesname.
 
@@ -78,3 +78,83 @@ Getting started
 - Use `git series format` to prepare the patch series to send via email, or
   use `git series req` to prepare a "please pull" mail (after pushing the
   changes to a repository as a branch or tag).
+
+Workflow example
+================
+
+Suppose you want to write a patch series implementing a new feature for a
+project.  You already have a local `git clone` of the repository.  You could
+start a branch for this patch series, but it may take multiple iterations
+before upstream accepts it, and you may need to use rebase or amend to fix
+commits; a branch can't track that.  With git-series, you'll develop the patch
+series as you normally would, including rebases, and periodically `git series
+commit` the state of the patch series, complete with a commit message
+explaining what you've changed.  Even if you rebase the patch series, or make
+some other change that doesn't fast-forward, git-series will track those
+changes with a branch that *does* fast-forward, so you can easily share and
+review the history of your patch series.
+
+Developing or importing the first version
+-----------------------------------------
+
+To start the patch series, first run `git series start featurename`.
+`featurename` here specifies the name for the series, just as you'd specify the
+name of a branch.
+
+A patch series needs some base to build on, identifying the upstream commit you
+want to develop from.  This will become the parent of the first patch in your
+series.  If you want to base your patch series on the current version, run `git
+series base HEAD`.  If you want to base this patch series on some other commit,
+such as a released version, first check out that commit with `git checkout
+thecommit`, then run `git series base HEAD`.
+
+You can then develop the patch series as usual, committing patches with git.
+
+If you've already started on the patch series and made some commits, you can
+still adopt the current version of the patch series into git-series.  Find the
+parent commit of the first patch in your series, and run `git series base
+thatcommit`.
+
+As with `git`, you can run `git series status` at any time to see the current
+state of the series, including changes you might want to commit, and the next
+step to run.  After the above steps, `git series status` should show `base` and
+`series` modified; running `git series base` set the `base` in the "working"
+version, and `series` in the working version always refers to HEAD (the current
+git commit you have checked out).
+
+Now that you've written an initial version of the patch series (or you already
+wrote it before you started using git-series), you can commit that version to
+git-series.  Run `git series commit -a` to commit the series.  This will run
+your editor so you can provide a series commit message (e.g. "Initial version
+of feature" or "Import feature into git-series").
+
+If your patch series include multiple patches, you may want to add a cover
+letter.  Run `git series cover` to edit the cover letter, then `git series
+commit -a -m 'Add cover letter'` to commit that change to the series.
+
+Now that you have the first version of the patch series, you can format it as a
+series of emails with `git series format`.
+
+Developing v2
+-------------
+
+You send the patch series by email, and you get feedback from the maintainers:
+the concept looks good, but you need to split one of the patches into two, and
+add benchmark results in another commit's commit message.
+
+Run `git series rebase -i`, and split the commit (mark it for 'e'dit, `git
+reset -N HEAD^`, repeatedly `git add -p` and `git commit`, then `git rebase
+--continue`).  Then, commit that change to the series: `git series commit -a -m
+'Split out X change into a separate patch'`
+
+Then, run `git series rebase -i` again to add the benchmark results (mark the
+commit for 'r'eword), and commit that change: `git series commit -a -m 'Add
+benchmark results'`.
+
+You may want to document the changes in the cover letter: run `git series
+cover`, document the changes, and `git series commit -a -m 'Update cover letter
+for v2'`.  (Alternatively, you can incrementally add to the cover letter along
+with each change to the series.)
+
+Now that you have v2 of the patch series, you can format it as a new series of
+emails with `git series format -v 2`.
