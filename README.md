@@ -2,6 +2,8 @@ git series tracks changes to a patch series over time.  git series also tracks
 a cover letter for the patch series, formats the series for email, and prepares
 pull requests.
 
+[Manpage for git-series](http://man7.org/linux/man-pages/man1/git-series.1.html)
+
 About git-series
 ================
 
