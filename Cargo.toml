@@ -1,6 +1,6 @@
 [package]
 name = "git-series"
-version = "0.8.7"
+version = "0.8.8"
 authors = ["Josh Triplett <josh@joshtriplett.org>"]
 license = "MIT"
 readme = "README.md"
