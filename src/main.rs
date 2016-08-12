@@ -463,7 +463,8 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
     } else {
         let base = m.value_of("base").unwrap();
         let base_object = try!(repo.revparse_single(base));
-        let base_id = base_object.id();
+        let base_commit = try!(base_object.peel(ObjectType::Commit));
+        let base_id = base_commit.id();
         let s_working_series = try!(try!(internals.working.get("series")).ok_or("Could not find entry \"series\" in working vesion of current series"));
         if base_id != s_working_series.id() && !try!(repo.graph_descendant_of(s_working_series.id(), base_id)) {
             return Err(format!("Cannot set base to {}: not an ancestor of the patch series {}", base, s_working_series.id()).into());
@@ -1343,7 +1344,8 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
         None => None,
         Some(onto) => {
             let obj = try!(repo.revparse_single(onto));
-            Some(obj.id())
+            let commit = try!(obj.peel(ObjectType::Commit));
+            Some(commit.id())
         },
     };
 
