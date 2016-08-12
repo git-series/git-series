@@ -342,6 +342,10 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
 }
 
 fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
+    let head = try!(repo.head());
+    let head_commit = try!(peel_to_commit(head));
+    let head_id = head_commit.as_object().id();
+
     let name = m.value_of("name").unwrap();
     if try!(Internals::exists(repo, name)) {
         return Err(format!("Series {} already exists.\nUse checkout to resume working on an existing patch series.", name).into());
@@ -351,6 +355,10 @@ fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let internals = try!(Internals::read(repo));
     try!(internals.write(repo));
+
+    // git status parses this reflog string; the prefix must remain "checkout: moving from ".
+    try!(repo.reference("HEAD", head_id, true, &format!("checkout: moving from {} to {} (git series start {})", head_id, head_id, name)));
+    println!("HEAD is now detached at {}", try!(commit_summarize(&repo, head_id)));
     Ok(())
 }
 
