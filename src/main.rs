@@ -1372,7 +1372,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     if let Some(onto) = onto {
         try!(writeln!(git_rebase_todo, "exec git series base {}", onto));
     }
-	try!(writeln!(git_rebase_todo, "\n# Rebase {}..{} onto {}", base_short, series_short, newbase_short));
+    try!(writeln!(git_rebase_todo, "\n# Rebase {}..{} onto {}", base_short, series_short, newbase_short));
     try!(write!(git_rebase_todo, "{}", REBASE_COMMENT));
     drop(git_rebase_todo);
 
