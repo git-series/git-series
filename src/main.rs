@@ -1351,6 +1351,11 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     };
 
     let newbase = onto.unwrap_or(base.id());
+    if newbase == base.id() && !interactive {
+        println!("Nothing to do: base unchanged and not rebasing interactively");
+        return Ok(());
+    }
+
     let (base_short, _) = try!(commit_summarize_components(&repo, base.id()));
     let (newbase_short, _) = try!(commit_summarize_components(&repo, newbase));
     let (series_short, _) = try!(commit_summarize_components(&repo, series.id()));
