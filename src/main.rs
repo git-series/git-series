@@ -473,7 +473,8 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
     };
 
     if current_base_id == new_base_id {
-        return Err("Base unchanged".into());
+        println!("Base unchanged");
+        return Ok(());
     }
 
     if !current_base_id.is_zero() {
