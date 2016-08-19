@@ -8,10 +8,10 @@ repository = "https://github.com/git-series/git-series"
 description = "Track patch series in git"
 
 [dependencies]
-ansi_term = "0.7.4"
+ansi_term = "0.8.0"
 chrono = "0.2.22"
 clap = "2.7.0"
-colorparse = "1"
+colorparse = "1.1"
 git2 = "0.4.4"
 isatty = "0.1.1"
 quick-error = "1.0"
