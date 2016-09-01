@@ -1202,7 +1202,12 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
         }
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
-        try!(writeln!(out, "Subject: [{} {}/{}] {}\n", subject_patch, commit_num+1, commits.len(), subject));
+        let m_of_n = if commits.len() == 1 && cover_entry.is_none() {
+            "".to_string()
+        } else {
+            format!(" {}/{}", commit_num+1, commits.len())
+        };
+        try!(writeln!(out, "Subject: [{}{}] {}\n", subject_patch, m_of_n, subject));
 
         if !no_from && (commit_author_name != committer_name || commit_author_email != committer_email) {
             try!(writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email));
