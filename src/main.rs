@@ -940,7 +940,7 @@ fn cover(repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(file.read_to_string(&mut msg));
     let msg = try!(git2::message_prettify(msg, git2::DEFAULT_COMMENT_CHAR));
     if msg.is_empty() {
-        return Err("Empty cover letter; not changing.\n(To delete the cover letter, use \"git series -d\".)".into());
+        return Err("Empty cover letter; not changing.\n(To delete the cover letter, use \"git series cover -d\".)".into());
     }
 
     let new_cover_id = try!(repo.blob(msg.as_bytes()));
