@@ -1164,11 +1164,13 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         }
         try!(writeln!(out, "{}", shortlog(&mut commits)));
         try!(writeln!(out, "{}", stats));
+        try!(writeln!(out, "base-commit: {}", base.id()));
         try!(writeln!(out, "{}", signature));
     }
 
     for (commit_num, commit) in commits.iter().enumerate() {
-        if to_stdout && (commit_num > 0 || cover_entry.is_some()) {
+        let first_mail = commit_num == 0 && cover_entry.is_none();
+        if to_stdout && !first_mail {
             try!(writeln!(out, ""));
         }
 
@@ -1193,7 +1195,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             try!(writeln!(out, "In-Reply-To: {}", message_id));
             try!(writeln!(out, "References: {}", message_id));
         }
-        if commit_num == 0 && cover_entry.is_none() {
+        if first_mail {
             in_reply_to_message_id = Some(this_message_id);
         }
         if no_from {
@@ -1218,6 +1220,9 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         try!(writeln!(out, "---"));
         try!(writeln!(out, "{}", stats));
         try!(write_diff(&mut out, &diff));
+        if first_mail {
+            try!(writeln!(out, "base-commit: {}", base.id()));
+        }
         try!(writeln!(out, "{}", signature));
     }
 
