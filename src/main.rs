@@ -1118,7 +1118,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     });
 
     let version = m.value_of("reroll-count");
-    let subject_patch = version.map_or("PATCH".to_string(), |n| format!("PATCH v{}", n));
+    let subject_prefix = m.value_of("subject-prefix").unwrap_or("PATCH");
+    let subject_patch = version.map_or(subject_prefix.to_string(), |n| format!("{} v{}", subject_prefix, n));
     let file_prefix = version.map_or("".to_string(), |n| format!("v{}-", n));
 
     let signature = mail_signature();
@@ -1599,7 +1600,8 @@ fn main() {
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
                     .arg_from_usage("--no-from 'Don't include in-body \"From:\" headers when formatting patches authored by others'")
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
-                    .arg_from_usage("--stdout 'Write patches to stdout rather than files'"),
+                    .arg_from_usage("--stdout 'Write patches to stdout rather than files'")
+                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'"),
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
                     .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'"),
