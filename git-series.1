@@ -112,7 +112,9 @@ To start working on the branch again, use \fBgit series checkout\fR.
 .TP
 \fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] \
 [\fB--no-from\fR] \
-[\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] [\fB--stdout\fR]
+[\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] \
+[\fB--stdout\fR] \
+[\fB--subject-prefix=\fR\fISubject-Prefix\fR]
 Prepare the patch series to send via email.
 This creates one file per patch in the series, plus one additional file for the
 cover letter if any.
@@ -146,6 +148,9 @@ The patch filenames and mail subjects will include the version number.
 .TP
 .B --stdout
 Write the entire patch series to stdout rather than to separate patch files.
+.TP
+.BI --subject-prefix= Subject-Prefix
+Use [\fISubject-Prefix\fR] instead of the standard [PATCH] prefix.
 .RE
 
 .TP
