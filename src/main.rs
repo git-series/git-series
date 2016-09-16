@@ -1221,7 +1221,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         try!(writeln!(out, "{}", stats));
         try!(write_diff(&mut out, &diff));
         if first_mail {
-            try!(writeln!(out, "base-commit: {}", base.id()));
+            try!(writeln!(out, "\nbase-commit: {}", base.id()));
         }
         try!(writeln!(out, "{}", signature));
     }
