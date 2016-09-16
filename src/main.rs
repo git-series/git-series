@@ -1069,6 +1069,14 @@ fn mail_signature() -> String {
     format!("-- \ngit-series {}", crate_version!())
 }
 
+fn ensure_space(s: &str) -> &'static str {
+    if s.is_empty() || s.ends_with(' ') {
+        ""
+    } else {
+        " "
+    }
+}
+
 fn ensure_nl(s: &str) -> &'static str {
     if !s.ends_with('\n') {
         "\n"
@@ -1119,7 +1127,9 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let version = m.value_of("reroll-count");
     let subject_prefix = m.value_of("subject-prefix").unwrap_or("PATCH");
-    let subject_patch = version.map_or(subject_prefix.to_string(), |n| format!("{} v{}", subject_prefix, n));
+    let subject_patch = version.map_or(
+            subject_prefix.to_string(),
+            |n| format!("{}{}v{}", subject_prefix, ensure_space(&subject_prefix), n));
     let file_prefix = version.map_or("".to_string(), |n| format!("v{}-", n));
 
     let signature = mail_signature();
@@ -1159,7 +1169,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         in_reply_to_message_id = Some(cover_message_id);
         try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
         try!(writeln!(out, "Date: {}", date_822(committer.when())));
-        try!(writeln!(out, "Subject: [{} 0/{}] {}\n", subject_patch, commits.len(), subject));
+        try!(writeln!(out, "Subject: [{}{}0/{}] {}\n", subject_patch, ensure_space(&subject_patch), commits.len(), subject));
         if !body.is_empty() {
             try!(writeln!(out, "{}", body));
         }
@@ -1205,12 +1215,16 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
         }
         try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
-        let m_of_n = if commits.len() == 1 && cover_entry.is_none() {
-            "".to_string()
+        let prefix = if commits.len() == 1 && cover_entry.is_none() {
+            if subject_patch.is_empty() {
+                "".to_string()
+            } else {
+                format!("[{}] ", subject_patch)
+            }
         } else {
-            format!(" {}/{}", commit_num+1, commits.len())
+            format!("[{}{}{}/{}] ", subject_patch, ensure_space(&subject_patch), commit_num+1, commits.len())
         };
-        try!(writeln!(out, "Subject: [{}{}] {}\n", subject_patch, m_of_n, subject));
+        try!(writeln!(out, "Subject: {}{}\n", prefix, subject));
 
         if !no_from && (commit_author_name != committer_name || commit_author_email != committer_email) {
             try!(writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email));
