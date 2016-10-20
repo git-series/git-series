@@ -1501,8 +1501,13 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     } else {
         Box::new(std::io::stdout())
     };
+    let file_name_size = match config.get_i32("series.truncnamesize") {
+        Ok(v) => v as usize,
+        _ => 80
+    };
+
     let patch_file = |name: &str| -> Result<Box<IoWrite>> {
-        let name = format!("{}{}", file_prefix, name);
+        let name = format!("{}{2:.*}", file_prefix, file_name_size, name);
         println!("{}", name);
         Ok(Box::new(try!(File::create(name))))
     };
