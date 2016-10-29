@@ -113,6 +113,7 @@ To start working on the branch again, use \fBgit series checkout\fR.
 \fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] \
 [\fB--no-from\fR] \
 [\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] \
+[\fB--rfc\fR] \
 [\fB--stdout\fR] \
 [\fB--subject-prefix=\fR\fISubject-Prefix\fR]
 Prepare the patch series to send via email.
@@ -145,6 +146,9 @@ Use this when producing patch files for purposes other than email.
 \fB-v\fR \fIN\fR | \fB--reroll-count=\fB\fIN\fR
 Mark the patch series as PATCH v\fIN\fR.
 The patch filenames and mail subjects will include the version number.
+.TP
+.B --rfc
+Use [RFC PATCH] instead of the standard [PATCH] prefix.
 .TP
 .B --stdout
 Write the entire patch series to stdout rather than to separate patch files.
