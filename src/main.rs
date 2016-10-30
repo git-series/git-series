@@ -191,7 +191,7 @@ impl<'repo> Internals<'repo> {
     // Returns true if it had anything to delete.
     fn delete(repo: &'repo Repository, series_name: &str) -> Result<bool> {
         let mut deleted_any = false;
-        for prefix in [STAGED_PREFIX, WORKING_PREFIX].iter() {
+        for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
             let prefixed_name = format!("{}{}", prefix, series_name);
             if let Some(mut r) = try!(notfound_to_none(repo.find_reference(&prefixed_name))) {
                 try!(r.delete());
@@ -510,15 +510,7 @@ fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
             return Err(format!("Cannot delete the current series \"{}\"; detach first.", name).into());
         }
     }
-    let prefixed_name = &[SERIES_PREFIX, name].concat();
-    let deleted_ref = if let Some(mut r) = try!(notfound_to_none(repo.find_reference(prefixed_name))) {
-        try!(r.delete());
-        true
-    } else {
-        false
-    };
-    let deleted_internals = try!(Internals::delete(repo, name));
-    if !deleted_ref && !deleted_internals {
+    if !try!(Internals::delete(repo, name)) {
         return Err(format!("Nothing to delete: series \"{}\" does not exist.", name).into());
     }
     Ok(())
