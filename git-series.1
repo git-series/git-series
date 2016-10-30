@@ -100,6 +100,12 @@ Delete the cover letter rather than editing it.
 .RE
 
 .TP
+\fBgit series cp\fR [\fIsource\fR] \fIdest\fR
+Copy the series \fIsource\fR to \fIdest\fR, including any work in progress,
+staged or unstaged.
+\fIsource\fR defaults to the current series if omitted.
+
+.TP
 \fBgit series delete\fR \fIname\fR
 Delete the series \fIname\fR, including any work in progress, staged or unstaged.
 
@@ -176,6 +182,15 @@ Show the history of the patch series.
 .BR -p | --patch
 Include a patch for each change committed to the series.
 .RE
+
+.TP
+\fBgit series mv\fR [\fIsource\fR] \fIdest\fR
+Move (rename) the series \fIsource\fR to \fIdest\fR, including any work in
+progress, staged or unstaged.
+\fIsource\fR defaults to the current series if omitted.
+Moving the current series will make the destination the current series.
+
+You can also invoke this as \fBgit series rename\fR.
 
 .TP
 \fBgit series rebase\fR [\fB-i\fR|\fB--interactive\fR] [\fIonto\fR]

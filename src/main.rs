@@ -188,6 +188,21 @@ impl<'repo> Internals<'repo> {
         Ok(false)
     }
 
+    // Returns true if it had anything to copy.
+    fn copy(repo: &'repo Repository, source: &str, dest: &str) -> Result<bool> {
+        let mut copied_any = false;
+        for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
+            let prefixed_source = format!("{}{}", prefix, source);
+            if let Some(r) = try!(notfound_to_none(repo.find_reference(&prefixed_source))) {
+                let oid = try!(r.target().ok_or(format!("Internal error: \"{}\" is a symbolic reference", prefixed_source)));
+                let prefixed_dest = format!("{}{}", prefix, dest);
+                try!(repo.reference(&prefixed_dest, oid, false, &format!("copied from {}", prefixed_source)));
+                copied_any = true;
+            }
+        }
+        Ok(copied_any)
+    }
+
     // Returns true if it had anything to delete.
     fn delete(repo: &'repo Repository, series_name: &str) -> Result<bool> {
         let mut deleted_any = false;
@@ -947,6 +962,37 @@ fn cover(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+fn cp_mv(repo: &Repository, m: &ArgMatches, mv: bool) -> Result<()> {
+    let shead_target = if let Some(shead) = try!(notfound_to_none(repo.find_reference(SHEAD_REF))) {
+        Some(try!(shead_series_name(&shead)))
+    } else {
+        None
+    };
+    let mut source_dest = m.values_of("source_dest").unwrap();
+    let dest = source_dest.next_back().unwrap();
+    let (update_shead, source) = match source_dest.next_back().map(String::from) {
+        Some(name) => (shead_target.as_ref() == Some(&name), name),
+        None => (true, try!(shead_target.ok_or("No current series"))),
+    };
+
+    if try!(Internals::exists(&repo, dest)) {
+        return Err(format!("The destination series \"{}\" already exists", dest).into());
+    }
+    if !try!(Internals::copy(&repo, &source, &dest)) {
+        return Err(format!("The source series \"{}\" does not exist", source).into());
+    }
+
+    if mv {
+        if update_shead {
+            let prefixed_dest = &[SERIES_PREFIX, dest].concat();
+            try!(repo.reference_symbolic(SHEAD_REF, &prefixed_dest, true, &format!("git series mv {} {}", source, dest)));
+        }
+        try!(Internals::delete(&repo, &source));
+    }
+
+    Ok(())
+}
+
 fn date_822(t: git2::Time) -> String {
     let offset = chrono::offset::fixed::FixedOffset::east(t.offset_minutes()*60);
     let datetime = offset.timestamp(t.seconds(), 0);
@@ -1682,6 +1728,9 @@ fn main() {
                 SubCommand::with_name("cover")
                     .about("Create or edit the cover letter for the patch series")
                     .arg_from_usage("-d, --delete 'Delete cover letter'"),
+                SubCommand::with_name("cp")
+                    .about("Copy a patch series")
+                    .arg(Arg::with_name("source_dest").required(true).min_values(1).max_values(2).help("source (default: current series) and destination (required)")),
                 SubCommand::with_name("delete")
                     .about("Delete a patch series")
                     .arg_from_usage("<name> 'Patch series to delete'"),
@@ -1698,6 +1747,10 @@ fn main() {
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
                     .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'"),
+                SubCommand::with_name("mv")
+                    .about("Move (rename) a patch series")
+                    .visible_alias("rename")
+                    .arg(Arg::with_name("source_dest").required(true).min_values(1).max_values(2).help("source (default: current series) and destination (required)")),
                 SubCommand::with_name("rebase")
                     .about("Rebase the patch series")
                     .arg_from_usage("[onto] 'Commit to rebase onto'")
@@ -1730,10 +1783,12 @@ fn main() {
             ("checkout", Some(ref sm)) => checkout(&repo, &sm),
             ("commit", Some(ref sm)) => commit_status(&mut out, &repo, &sm, false),
             ("cover", Some(ref sm)) => cover(&repo, &sm),
+            ("cp", Some(ref sm)) => cp_mv(&repo, &sm, false),
             ("delete", Some(ref sm)) => delete(&repo, &sm),
             ("detach", _) => detach(&repo),
             ("format", Some(ref sm)) => format(&mut out, &repo, &sm),
             ("log", Some(ref sm)) => log(&mut out, &repo, &sm),
+            ("mv", Some(ref sm)) => cp_mv(&repo, &sm, true),
             ("rebase", Some(ref sm)) => rebase(&repo, &sm),
             ("req", Some(ref sm)) => req(&mut out, &repo, &sm),
             ("start", Some(ref sm)) => start(&repo, &sm),
