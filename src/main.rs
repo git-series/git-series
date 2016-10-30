@@ -310,7 +310,7 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
         }
     }
     let shead_target = if let Some(shead) = try!(notfound_to_none(repo.find_reference(SHEAD_REF))) {
-        Some(try!(shead_series_name(&shead)).to_string())
+        Some(try!(shead_series_name(&shead)))
     } else {
         None
     };
