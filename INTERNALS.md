@@ -112,9 +112,9 @@ The `staged` commit for a patch series, if present, tracks the staged changes
 to the patch series.  `git series add` adds changes from `working` to `staged`,
 and `git series unadd` removes changes from `staged`.
 
-If a series does not have a series ref `refs/git-series/NAME`, but has a staged
-or working ref, the series still exists, with no series commits.  This can
-happen by running `git series start NAME`, making some changes without
+If a series does not have a series ref `refs/heads/git-series/NAME`, but has a
+staged or working ref, the series still exists, with no series commits.  This
+can happen by running `git series start NAME`, making some changes without
 committing, and then running `git series detach`.  git-series treats that as an
 existing series, and allows checking it out.  This preserves work in progress
 on an un-started series.
