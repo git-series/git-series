@@ -30,6 +30,12 @@ to push and pull a series to any git repository along with other branches and
 tags.  git-series also tracks a cover letter for the patch series, formats the
 series for email, and prepares pull requests.
 
+As you change a patch series, git-series can show diffs between versions,
+finding and showing the correspondence between the old and new versions of each
+commit, even after changing or rebasing those commits.  The series diff format
+shows corresponding old and new commits side-by-side, with interdiffs for
+modified commits.
+
 Building and installing
 =======================
 
@@ -66,11 +72,13 @@ Overview of commands
 
 - Use normal git commands to commit changes.
 
+- Use `git series rebase -i` to help rework or reorganize the patch series.
+
 - Use `git series status` to check what has changed.
 
-- Use `git series cover` to add or edit a cover letter.
+- Use `git series diff` to show the changes to the patch series as a diff.
 
-- Use `git series rebase -i` to help rework or reorganize the patch series.
+- Use `git series cover` to add or edit a cover letter.
 
 - Use `git series add` and `git series commit` (or `git series commit -a`) to
   commit changes to the patch series.  You can do this whenever you've changed

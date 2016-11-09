@@ -5,10 +5,12 @@ extern crate clap;
 extern crate colorparse;
 extern crate git2;
 extern crate isatty;
+extern crate munkres;
 #[macro_use]
 extern crate quick_error;
 extern crate tempdir;
 
+use std::cmp::max;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as FmtWrite;
@@ -19,7 +21,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Config, Commit, Diff, Object, ObjectType, Oid, Reference, Repository, TreeBuilder};
+use git2::{Config, Commit, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
@@ -531,6 +533,31 @@ fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+fn do_diff(out: &mut Output, repo: &Repository) -> Result<()> {
+    let internals = try!(Internals::read(&repo));
+    let config = try!(try!(repo.config()).snapshot());
+    try!(out.auto_pager(&config, "diff", true));
+    let diffcolors = try!(DiffColors::new(out, &config));
+
+    let working_tree = try!(repo.find_tree(try!(internals.working.write())));
+    let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
+    let diff = try!(repo.diff_tree_to_tree(Some(&staged_tree), Some(&working_tree), None));
+    try!(write_diff(out, &diffcolors, &diff, false));
+
+    let base1 = try!(internals.staged.get("base"));
+    let series1 = try!(internals.staged.get("series"));
+    let base2 = try!(internals.working.get("base"));
+    let series2 = try!(internals.working.get("series"));
+
+    if let (Some(base1), Some(series1), Some(base2), Some(series2)) = (base1, series1, base2, series2) {
+        try!(write_series_diff(out, repo, &diffcolors, (base1.id(), series1.id()), (base2.id(), series2.id())));
+    } else {
+        try!(writeln!(out, "Can't diff series: both versions must have base and series to diff"));
+    }
+
+    Ok(())
+}
+
 fn get_editor(config: &Config) -> Result<OsString> {
     if let Some(e) = env::var_os("GIT_EDITOR") {
         return Ok(e);
@@ -873,7 +900,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             }
             if m.is_present("verbose") {
                 try!(writeln!(file, "{}\n{}", SCISSOR_LINE, SCISSOR_COMMENT));
-                try!(write_diff(&mut file, &DiffColors::plain(), &diff));
+                try!(write_diff(&mut file, &DiffColors::plain(), &diff, false));
             }
             drop(file);
             try!(run_editor(&config, &filename));
@@ -1089,6 +1116,8 @@ struct DiffColors {
     context: Style,
     old: Style,
     new: Style,
+    series_old: Style,
+    series_new: Style,
 }
 
 impl DiffColors {
@@ -1101,18 +1130,24 @@ impl DiffColors {
             context: Style::new(),
             old: Style::new(),
             new: Style::new(),
+            series_old: Style::new(),
+            series_new: Style::new(),
         }
     }
 
     fn new(out: &Output, config: &Config) -> Result<Self> {
+        let old = try!(out.get_color(&config, "diff", "old", "red"));
+        let new = try!(out.get_color(&config, "diff", "new", "green"));
         Ok(DiffColors {
             commit: try!(out.get_color(&config, "diff", "commit", "yellow")),
             meta: try!(out.get_color(&config, "diff", "meta", "bold")),
             frag: try!(out.get_color(&config, "diff", "frag", "cyan")),
             func: try!(out.get_color(&config, "diff", "func", "normal")),
             context: try!(out.get_color(&config, "diff", "context", "normal")),
-            old: try!(out.get_color(&config, "diff", "old", "red")),
-            new: try!(out.get_color(&config, "diff", "new", "green")),
+            old: old,
+            new: new,
+            series_old: old.reverse(),
+            series_new: new.reverse(),
         })
     }
 }
@@ -1123,16 +1158,18 @@ fn diffstat(diff: &Diff) -> Result<String> {
     Ok(stats_buf.as_str().unwrap().to_string())
 }
 
-fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff) -> Result<()> {
+fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff, simplify: bool) -> Result<usize> {
     let mut err = Ok(());
+    let mut lines = 0;
     let normal = Style::new();
     try!(diff.print(git2::DiffFormat::Patch, |_, _, l| {
         err = || -> Result<()> {
             let o = l.origin();
             let style = match o {
-                ' '|'=' => colors.context,
                 '-'|'<' => colors.old,
                 '+'|'>' => colors.new,
+                _ if simplify => normal,
+                ' '|'=' => colors.context,
                 'F' => colors.meta,
                 'H' => colors.frag,
                 _ => normal,
@@ -1142,7 +1179,23 @@ fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff) -> Result
             if o == '+' || o == '-' || o == ' ' {
                 v.push(style.paint(&obyte[..]));
             }
-            if o == 'H' {
+            if simplify {
+                if o == 'H' {
+                    v.push(normal.paint("@@\n".as_bytes()));
+                    lines += 1;
+                } else if o == 'F' {
+                    for line in l.content().split(|c| *c == b'\n') {
+                        if !line.is_empty() && !line.starts_with(b"diff --git") && !line.starts_with(b"index ") {
+                            v.push(normal.paint(line.to_owned()));
+                            v.push(normal.paint("\n".as_bytes()));
+                            lines += 1;
+                        }
+                    }
+                } else {
+                    v.push(style.paint(l.content()));
+                    lines += 1;
+                }
+            } else if o == 'H' {
                 // Split frag and func
                 let line = l.content();
                 let at = &|&(_,&c): &(usize, &u8)| c == b'@';
@@ -1173,7 +1226,186 @@ fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff) -> Result
         }();
         err.is_ok()
     }));
-    err
+    try!(err);
+    Ok(lines)
+}
+
+fn get_commits(repo: &Repository, base: Oid, series: Oid) -> Result<Vec<Commit>> {
+    let mut revwalk = try!(repo.revwalk());
+    revwalk.set_sorting(git2::SORT_TOPOLOGICAL|git2::SORT_REVERSE);
+    try!(revwalk.push(series));
+    try!(revwalk.hide(base));
+    revwalk.map(|c| {
+        let id = try!(c);
+        let commit = try!(repo.find_commit(id));
+        Ok(commit)
+    }).collect()
+}
+
+fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, (base1, series1): (Oid, Oid), (base2, series2): (Oid, Oid)) -> Result<()> {
+    let mut commits1 = try!(get_commits(repo, base1, series1));
+    let mut commits2 = try!(get_commits(repo, base2, series2));
+    for commit in commits1.iter().chain(commits2.iter()) {
+        if commit.parent_ids().count() > 1 {
+            try!(writeln!(out, "(Diffs of series with merge commits ({}) not yet supported)", commit.id()));
+            return Ok(());
+        }
+    }
+    let ncommon = commits1.iter().zip(commits2.iter()).take_while(|&(ref c1, ref c2)| c1.id() == c2.id()).count();
+    drop(commits1.drain(..ncommon));
+    drop(commits2.drain(..ncommon));
+    let ncommits1 = commits1.len();
+    let ncommits2 = commits2.len();
+    let n = ncommits1 + ncommits2;
+    if n == 0 {
+        return Ok(());
+    }
+    let commit_text = &|commit: &Commit| {
+        let parent = try!(commit.parent(0));
+        let author = commit.author();
+        let diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
+        let mut v = Vec::new();
+        try!(v.write_all(b"From: "));
+        try!(v.write_all(author.name_bytes()));
+        try!(v.write_all(b" <"));
+        try!(v.write_all(author.email_bytes()));
+        try!(v.write_all(b">\n\n"));
+        try!(v.write_all(commit.message_bytes()));
+        try!(v.write_all(b"\n"));
+        let lines = try!(write_diff(&mut v, colors, &diff, true));
+        Ok((v, lines))
+    };
+    let texts1: Vec<_> = try!(commits1.iter().map(commit_text).collect::<Result<_>>());
+    let texts2: Vec<_> = try!(commits2.iter().map(commit_text).collect::<Result<_>>());
+
+    let mut weights = Vec::with_capacity(n*n);
+    for i1 in 0..ncommits1 {
+        for i2 in 0..ncommits2 {
+            let patch = try!(git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None));
+            let (_, additions, deletions) = try!(patch.line_stats());
+            weights.push(additions+deletions);
+        }
+        let w = texts1[i1].1 / 2;
+        for _ in ncommits2..n {
+            weights.push(w);
+        }
+    }
+    for _ in ncommits1..n {
+        for i2 in 0..ncommits2 {
+            weights.push(texts2[i2].1 / 2);
+        }
+        for _ in ncommits2..n {
+            weights.push(0);
+        }
+    }
+    let mut weight_matrix = munkres::WeightMatrix::from_row_vec(n, weights);
+    let result = munkres::solve_assignment(&mut weight_matrix);
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    enum CommitState { Unhandled, Handled, Deleted };
+    let mut commits2_from1: Vec<_> = std::iter::repeat(None).take(ncommits2).collect();
+    let mut commits1_state: Vec<_> = std::iter::repeat(CommitState::Unhandled).take(ncommits1).collect();
+    let mut commit_pairs = Vec::with_capacity(n);
+    for (i1, i2) in result {
+        if i1 < ncommits1 {
+            if i2 < ncommits2 {
+                commits2_from1[i2] = Some(i1);
+            } else {
+                commits1_state[i1] = CommitState::Deleted;
+            }
+        }
+    }
+
+    // Show matching or new commits sorted by the new commit order. Show deleted commits after
+    // showing all of their prerequisite commits.
+    let mut commits1_state_index = 0;
+    for (i2, opt_i1) in commits2_from1.iter().enumerate() {
+        //for i1 in commits1_state_index..ncommits1 {
+        while commits1_state_index < ncommits1 {
+            match commits1_state[commits1_state_index] {
+                CommitState::Unhandled => { break }
+                CommitState::Handled => {},
+                CommitState::Deleted => {
+                    commit_pairs.push((Some(commits1_state_index), None));
+                },
+            }
+            commits1_state_index += 1;
+        }
+        if let &Some(i1) = opt_i1 {
+            commit_pairs.push((Some(i1), Some(i2)));
+            commits1_state[i1] = CommitState::Handled;
+        } else {
+            commit_pairs.push((None, Some(i2)));
+        }
+    }
+    for i1 in commits1_state_index..ncommits1 {
+        if commits1_state[i1] == CommitState::Deleted {
+            commit_pairs.push((Some(i1), None));
+        }
+    }
+
+    let normal = Style::new();
+    let nl = |v: &mut Vec<_>| { v.push(normal.paint("\n".as_bytes())); };
+    let mut v = Vec::new();
+    v.push(colors.meta.paint("diff --series".as_bytes()));
+    nl(&mut v);
+
+    let offset = ncommon + 1;
+    let nwidth = max(ncommits1 + offset, ncommits2 + offset).to_string().len();
+    let commits1_summaries: Vec<_> = try!(commits1.iter_mut().map(commit_obj_summarize_components).collect());
+    let commits2_summaries: Vec<_> = try!(commits2.iter_mut().map(commit_obj_summarize_components).collect());
+    let idwidth = commits1_summaries.iter().chain(commits2_summaries.iter()).map(|&(ref short_id, _)| short_id.len()).max().unwrap();
+    for commit_pair in commit_pairs {
+        match commit_pair {
+            (None, None) => unreachable!(),
+            (Some(i1), None) => {
+                let (ref c1_short_id, ref c1_summary) = commits1_summaries[i1];
+                v.push(colors.old.paint(format!("{:nwidth$}: {:idwidth$} < {:-<nwidth$}: {:-<idwidth$} {}",
+                                                i1 + offset, c1_short_id, "", "", c1_summary, nwidth=nwidth, idwidth=idwidth).as_bytes().to_owned()));
+                nl(&mut v);
+            }
+            (None, Some(i2)) => {
+                let (ref c2_short_id, ref c2_summary) = commits2_summaries[i2];
+                v.push(colors.new.paint(format!("{:-<nwidth$}: {:-<idwidth$} > {:nwidth$}: {:idwidth$} {}",
+                                                "", "", i2 + offset, c2_short_id, c2_summary, nwidth=nwidth, idwidth=idwidth).as_bytes().to_owned()));
+                nl(&mut v);
+            }
+            (Some(i1), Some(i2)) => {
+                let mut patch = try!(git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None));
+                let (old, ch, new) = if let Delta::Unmodified = patch.delta().status() {
+                    (colors.commit, '=', colors.commit)
+                } else {
+                    (colors.series_old, '!', colors.series_new)
+                };
+                let (ref c1_short_id, _) = commits1_summaries[i1];
+                let (ref c2_short_id, ref c2_summary) = commits2_summaries[i2];
+                v.push(old.paint(format!("{:nwidth$}: {:idwidth$}", i1 + offset, c1_short_id, nwidth=nwidth, idwidth=idwidth).as_bytes().to_owned()));
+                v.push(colors.commit.paint(format!(" {} ", ch).as_bytes().to_owned()));
+                v.push(new.paint(format!("{:nwidth$}: {:idwidth$}", i2 + offset, c2_short_id, nwidth=nwidth, idwidth=idwidth).as_bytes().to_owned()));
+                v.push(colors.commit.paint(format!(" {}", c2_summary).as_bytes().to_owned()));
+                nl(&mut v);
+                try!(patch.print(&mut |_, _, l| {
+                    let o = l.origin();
+                    let style = match o {
+                        '-'|'<' => old,
+                        '+'|'>' => new,
+                        _ => normal,
+                    };
+                    if o == '+' || o == '-' || o == ' ' {
+                        v.push(style.paint(vec![o as u8]));
+                    }
+                    let style = if o == 'H' { colors.frag } else { normal };
+                    if o != 'F' {
+                        v.push(style.paint(l.content().to_owned()));
+                    }
+                    true
+                }));
+            }
+        }
+    }
+
+    try!(ansi_term::ANSIByteStrings(&v).write_to(out));
+    Ok(())
 }
 
 fn mail_signature() -> String {
@@ -1356,7 +1588,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         }
         try!(writeln!(out, "---"));
         try!(writeln!(out, "{}", stats));
-        try!(write_diff(&mut out, &diffcolors, &diff));
+        try!(write_diff(&mut out, &diffcolors, &diff, false));
         if first_mail {
             try!(writeln!(out, "\nbase-commit: {}", base.id()));
         }
@@ -1428,7 +1660,16 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
                     Some(try!(try!(repo.find_commit(parent_ids[0])).tree()))
                 };
                 let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
-                try!(write_diff(out, &diffcolors, &diff));
+                try!(write_diff(out, &diffcolors, &diff, false));
+                if let Some(ptree) = parent_tree {
+                    let series1 = try!(ptree.get_name("series").ok_or(format!("Could not find entry \"series\" in {}", ptree.id())));
+                    let series2 = try!(tree.get_name("series").ok_or(format!("Could not find entry \"series\" in {}", tree.id())));
+                    if let (Some(base1), Some(base2)) = (ptree.get_name("base"), tree.get_name("base")) {
+                        try!(write_series_diff(out, repo, &diffcolors, (base1.id(), series1.id()), (base2.id(), series2.id())));
+                    } else {
+                        try!(writeln!(out, "(Can't diff series: base not found in both old and new versions.)"));
+                    }
+                }
             }
         }
     }
@@ -1691,7 +1932,7 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(writeln!(out, "{}", shortlog(&mut commits)));
     try!(writeln!(out, "{}", stats));
     if m.is_present("patch") {
-        try!(write_diff(out, &diffcolors, &diff));
+        try!(write_diff(out, &diffcolors, &diff, false));
     }
     try!(writeln!(out, "{}", mail_signature()));
 
@@ -1734,6 +1975,8 @@ fn main() {
                     .arg_from_usage("<name> 'Patch series to delete'"),
                 SubCommand::with_name("detach")
                     .about("Stop working on any patch series"),
+                SubCommand::with_name("diff")
+                    .about("Show changes in the patch series"),
                 SubCommand::with_name("format")
                     .about("Prepare patch series for email")
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
@@ -1784,6 +2027,7 @@ fn main() {
             ("cp", Some(ref sm)) => cp_mv(&repo, &sm, false),
             ("delete", Some(ref sm)) => delete(&repo, &sm),
             ("detach", _) => detach(&repo),
+            ("diff", _) => do_diff(&mut out, &repo),
             ("format", Some(ref sm)) => format(&mut out, &repo, &sm),
             ("log", Some(ref sm)) => log(&mut out, &repo, &sm),
             ("mv", Some(ref sm)) => cp_mv(&repo, &sm, true),

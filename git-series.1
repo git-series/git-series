@@ -116,6 +116,19 @@ Any changes in progress, staged or unstaged, will remain intact.
 To start working on the branch again, use \fBgit series checkout\fR.
 
 .TP
+\fBgit series diff\fR
+Show changes to the patch series from the current working version to the staged
+version.
+Changes to the cover letter appear as standard text diffs.
+If both the old and new version contain base and series entries, \fBgit series
+diff\fR will find and show the correspondence between the old and new versions
+of each commit.
+The series diff format shows reordered commits, deleted or added commits, and
+modified commits.
+For modified commits, the series diff includes a simplified interdiff between
+the commits.
+
+.TP
 \fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] \
 [\fB--no-from\fR] \
 [\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] \
@@ -181,6 +194,7 @@ Show the history of the patch series.
 .TP
 .BR -p | --patch
 Include a patch for each change committed to the series.
+This uses the same series diff format as \fBgit series diff\fR.
 .RE
 
 .TP
