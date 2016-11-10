@@ -36,8 +36,10 @@ Building and installing
 git-series is written in Rust.  You'll need both Rust and Cargo installed to
 build it.  If your OS distribution includes packages for Rust and Cargo, start
 by installing those (for instance, on Debian, `apt install rustc cargo`).
-Otherwise, you can [download the stable version of Rust and Cargo from the
-rust-lang.org download page](https://www.rust-lang.org/downloads.html).
+If your distribution doesn't have packages of Rust and Cargo, or has an
+outdated version (which may result in build errors), you can [download the
+stable version of Rust and Cargo from the rust-lang.org download
+page](https://www.rust-lang.org/downloads.html).
 
 With Rust and Cargo installed, you can download and install the latest release
 of git-series with:
