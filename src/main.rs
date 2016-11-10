@@ -1371,27 +1371,25 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(out.auto_pager(&config, "log", true));
     let diffcolors = try!(DiffColors::new(out, &config));
 
-    let mut revwalk = try!(repo.revwalk());
-    try!(revwalk.push_ref(SHEAD_REF));
-
-    // Walk once before sorting, to find all the commits to hide. Revwalk doesn't support hiding on
-    // the fly when sorted.
+    let shead_id = try!(repo.refname_to_id(SHEAD_REF));
     let mut hidden_ids = std::collections::HashSet::new();
-    while let Some(oid) = revwalk.next() {
-        let oid = try!(oid);
+    let mut commit_stack = Vec::new();
+    commit_stack.push(shead_id);
+    while let Some(oid) = commit_stack.pop() {
         let commit = try!(repo.find_commit(oid));
         let tree = try!(commit.tree());
         for parent_id in commit.parent_ids() {
             if tree.get_id(parent_id).is_some() {
-                try!(revwalk.hide(parent_id));
                 hidden_ids.insert(parent_id);
+            } else {
+                commit_stack.push(parent_id);
             }
         }
     }
 
-    // set_sorting resets the revwalk
+    let mut revwalk = try!(repo.revwalk());
     revwalk.set_sorting(git2::SORT_TOPOLOGICAL);
-    try!(revwalk.push_ref(SHEAD_REF));
+    try!(revwalk.push(shead_id));
     for id in hidden_ids {
         try!(revwalk.hide(id));
     }
