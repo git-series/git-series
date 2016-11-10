@@ -21,7 +21,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Config, Commit, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, TreeBuilder};
+use git2::{Config, Commit, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
@@ -541,21 +541,8 @@ fn do_diff(out: &mut Output, repo: &Repository) -> Result<()> {
 
     let working_tree = try!(repo.find_tree(try!(internals.working.write())));
     let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
-    let diff = try!(repo.diff_tree_to_tree(Some(&staged_tree), Some(&working_tree), None));
-    try!(write_diff(out, &diffcolors, &diff, false));
 
-    let base1 = try!(internals.staged.get("base"));
-    let series1 = try!(internals.staged.get("series"));
-    let base2 = try!(internals.working.get("base"));
-    let series2 = try!(internals.working.get("series"));
-
-    if let (Some(base1), Some(series1), Some(base2), Some(series2)) = (base1, series1, base2, series2) {
-        try!(write_series_diff(out, repo, &diffcolors, (base1.id(), series1.id()), (base2.id(), series2.id())));
-    } else {
-        try!(writeln!(out, "Can't diff series: both versions must have base and series to diff"));
-    }
-
-    Ok(())
+    write_series_diff(out, repo, &diffcolors, Some(&staged_tree), Some(&working_tree))
 }
 
 fn get_editor(config: &Config) -> Result<OsString> {
@@ -1242,7 +1229,7 @@ fn get_commits(repo: &Repository, base: Oid, series: Oid) -> Result<Vec<Commit>>
     }).collect()
 }
 
-fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, (base1, series1): (Oid, Oid), (base2, series2): (Oid, Oid)) -> Result<()> {
+fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, (base1, series1): (Oid, Oid), (base2, series2): (Oid, Oid)) -> Result<()> {
     let mut commits1 = try!(get_commits(repo, base1, series1));
     let mut commits2 = try!(get_commits(repo, base2, series2));
     for commit in commits1.iter().chain(commits2.iter()) {
@@ -1405,6 +1392,24 @@ fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffCo
     }
 
     try!(ansi_term::ANSIByteStrings(&v).write_to(out));
+    Ok(())
+}
+
+fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, tree1: Option<&Tree>, tree2: Option<&Tree>) -> Result<()> {
+    let diff = try!(repo.diff_tree_to_tree(tree1, tree2, None));
+    try!(write_diff(out, colors, &diff, false));
+
+    let base1 = tree1.and_then(|t| t.get_name("base"));
+    let series1 = tree1.and_then(|t| t.get_name("series"));
+    let base2 = tree2.and_then(|t| t.get_name("base"));
+    let series2 = tree2.and_then(|t| t.get_name("series"));
+
+    if let (Some(base1), Some(series1), Some(base2), Some(series2)) = (base1, series1, base2, series2) {
+        try!(write_commit_range_diff(out, repo, colors, (base1.id(), series1.id()), (base2.id(), series2.id())));
+    } else {
+        try!(writeln!(out, "Can't diff series: both versions must have base and series to diff"));
+    }
+
     Ok(())
 }
 
@@ -1659,17 +1664,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
                 } else {
                     Some(try!(try!(repo.find_commit(parent_ids[0])).tree()))
                 };
-                let diff = try!(repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None));
-                try!(write_diff(out, &diffcolors, &diff, false));
-                if let Some(ptree) = parent_tree {
-                    let series1 = try!(ptree.get_name("series").ok_or(format!("Could not find entry \"series\" in {}", ptree.id())));
-                    let series2 = try!(tree.get_name("series").ok_or(format!("Could not find entry \"series\" in {}", tree.id())));
-                    if let (Some(base1), Some(base2)) = (ptree.get_name("base"), tree.get_name("base")) {
-                        try!(write_series_diff(out, repo, &diffcolors, (base1.id(), series1.id()), (base2.id(), series2.id())));
-                    } else {
-                        try!(writeln!(out, "(Can't diff series: base not found in both old and new versions.)"));
-                    }
-                }
+                try!(write_series_diff(out, repo, &diffcolors, parent_tree.as_ref(), Some(&tree)));
             }
         }
     }
