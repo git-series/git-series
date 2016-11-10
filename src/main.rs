@@ -810,13 +810,13 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
 
     let commit_all = m.is_present("all");
 
-    let (changes, tree, diff) = if commit_all {
+    let (changes, tree) = if commit_all {
         let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&working_tree), None));
         let changes = try!(write_status(&mut status, &diff, "Changes to be committed:", &color_normal, false, &[]));
         if !changes {
             status.push(color_normal.paint("nothing to commit; series unchanged\n"));
         }
-        (changes, working_tree, diff)
+        (changes, working_tree)
     } else {
         let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&staged_tree), None));
         let changes_to_be_committed = try!(write_status(&mut status, &diff,
@@ -837,7 +837,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             }
         }
 
-        (changes_to_be_committed, staged_tree, diff)
+        (changes_to_be_committed, staged_tree)
     };
 
     let status = ansi_term::ANSIStrings(&status).to_string();
@@ -887,7 +887,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             }
             if m.is_present("verbose") {
                 try!(writeln!(file, "{}\n{}", SCISSOR_LINE, SCISSOR_COMMENT));
-                try!(write_diff(&mut file, &DiffColors::plain(), &diff, false));
+                try!(write_series_diff(&mut file, repo, &DiffColors::plain(), shead_tree.as_ref(), Some(&tree)));
             }
             drop(file);
             try!(run_editor(&config, &filename));
