@@ -1484,6 +1484,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             |n| format!("{}{}v{}", subject_prefix, ensure_space(&subject_prefix), n));
     let file_prefix = version.map_or("".to_string(), |n| format!("v{}-", n));
 
+    let num_width = commits.len().to_string().len();
+
     let signature = mail_signature();
 
     if to_stdout {
@@ -1528,7 +1530,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         in_reply_to_message_id = Some(cover_message_id);
         try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
         try!(writeln!(out, "Date: {}", date_822(committer.when())));
-        try!(writeln!(out, "Subject: [{}{}0/{}] {}\n", subject_patch, ensure_space(&subject_patch), commits.len(), subject));
+        try!(writeln!(out, "Subject: [{}{}{:0>num_width$}/{}] {}\n", subject_patch, ensure_space(&subject_patch), 0, commits.len(), subject, num_width=num_width));
         if !body.is_empty() {
             try!(writeln!(out, "{}", body));
         }
@@ -1581,7 +1583,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
                 format!("[{}] ", subject_patch)
             }
         } else {
-            format!("[{}{}{}/{}] ", subject_patch, ensure_space(&subject_patch), commit_num+1, commits.len())
+            format!("[{}{}{:0>num_width$}/{}] ", subject_patch, ensure_space(&subject_patch), commit_num+1, commits.len(), num_width=num_width)
         };
         try!(writeln!(out, "Subject: {}{}\n", prefix, subject));
 
