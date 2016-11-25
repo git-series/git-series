@@ -21,7 +21,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Config, Commit, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
+use git2::{Config, Commit, Delta, Diff, DiffFindOptions, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
@@ -44,6 +44,11 @@ quick_error! {
             display("{}", msg)
         }
         Utf8Error(err: std::str::Utf8Error) {
+            from()
+            cause(err)
+            display("{}", err)
+        }
+        ParseIntError(err: std::num::ParseIntError) {
             from()
             cause(err)
             display("{}", err)
@@ -1506,6 +1511,16 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         println!("{}", name);
         Ok(Box::new(try!(File::create(name))))
     };
+    let mut diff_find_options = DiffFindOptions::new();
+    diff_find_options.by_config();
+    if let Some(find_rename_threshold) = m.value_of("find-renames") {
+        diff_find_options.renames(true);
+        diff_find_options.rename_threshold(try!(find_rename_threshold.parse::<u16>()));
+    };
+    if let Some(break_rewrite_threshold) = m.value_of("break_rewrites") {
+        diff_find_options.break_rewries(true);
+        diff_find_options.break_rewrite_threshold(try!(break_rewrite_threshold.parse::<u16>()));
+    }
 
     if let Some(ref entry) = cover_entry {
         let cover_blob = try!(repo.find_blob(entry.id()));
@@ -1514,7 +1529,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
 
         let series_tree = try!(repo.find_commit(series.id())).tree().unwrap();
         let base_tree = try!(repo.find_commit(base.id())).tree().unwrap();
-        let diff = try!(repo.diff_tree_to_tree(Some(&base_tree), Some(&series_tree), None));
+        let mut diff = try!(repo.diff_tree_to_tree(Some(&base_tree), Some(&series_tree), None));
+        try!(diff.find_similar(Some(&mut diff_find_options)));
         let stats = try!(diffstat(&diff));
 
         if !to_stdout {
@@ -1555,7 +1571,8 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let summary_sanitized = sanitize_summary(&subject);
         let this_message_id = format!("<{}.{}>", commit_id, message_id_suffix);
         let parent = try!(commit.parent(0));
-        let diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
+        let mut diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
+        try!(diff.find_similar(Some(&mut diff_find_options)));
         let stats = try!(diffstat(&diff));
 
         if !to_stdout {
@@ -1979,6 +1996,8 @@ fn main() {
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
                     .arg_from_usage("--no-from 'Don't include in-body \"From:\" headers when formatting patches authored by others'")
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
+                    .arg_from_usage("-M, --find-renames=[N] 'Detect renames. Behave like git diff -M=[N]'")
+                    .arg_from_usage("-B, --break-rewrites=[N] 'Break complete rewrite changes into pairs of delete and create. Behave like git diff -B=[N]'")
                     .arg(Arg::from_usage("--rfc 'Use [RFC PATCH] instead of the standard [PATCH] prefix'").conflicts_with("subject-prefix"))
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'")
                     .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'"),
