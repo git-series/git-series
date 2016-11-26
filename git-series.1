@@ -188,9 +188,13 @@ Show help for \fIsubcommand\fR.
 .RE
 
 .TP
-\fBgit series log\fR [\fB-p\fR|\fB--patch\fR]
-Show the history of the patch series.
+\fBgit series log\fR [\fB-p\fR|\fB--patch\fR] [\fIname\fR]
+Show the history of a patch series.
 .RS
+.TP
+\fIname\fR
+Patch series to show.
+\fIname\fR defaults to the current series if omitted.
 .TP
 .BR -p | --patch
 Include a patch for each change committed to the series.
