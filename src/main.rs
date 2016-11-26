@@ -103,6 +103,15 @@ fn peel_to_commit(r: Reference) -> Result<Commit> {
     Ok(try!(try!(r.peel(ObjectType::Commit)).into_commit().map_err(|obj| format!("Internal error: expected a commit: {}", obj.id()))))
 }
 
+fn sname_or_shead_commit<'a>(repo: &'a Repository, series_name: Option<&str>)
+        -> std::result::Result<Commit<'a>, git2::Error> {
+    let id = match series_name {
+        None => try!(repo.refname_to_id(SHEAD_REF)),
+        Some(name) => try!(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, name))),
+    };
+    repo.find_commit(id)
+}
+
 fn commit_obj_summarize_components(commit: &mut Commit) -> Result<(String, String)> {
     let short_id_buf = try!(commit.as_object().short_id());
     let short_id = short_id_buf.as_str().unwrap();
@@ -1438,7 +1447,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let to_stdout = m.is_present("stdout");
     let no_from = m.is_present("no-from");
 
-    let shead_commit = try!(peel_to_commit(try!(try!(repo.find_reference(SHEAD_REF)).resolve())));
+    let shead_commit = try!(sname_or_shead_commit(repo, m.value_of("name")));
     let stree = try!(shead_commit.tree());
 
     let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
@@ -1610,7 +1619,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(out.auto_pager(&config, "log", true));
     let diffcolors = try!(DiffColors::new(out, &config));
 
-    let shead_id = try!(repo.refname_to_id(SHEAD_REF));
+    let shead_id = try!(sname_or_shead_commit(repo, m.value_of("name"))).id();
     let mut hidden_ids = std::collections::HashSet::new();
     let mut commit_stack = Vec::new();
     commit_stack.push(shead_id);
@@ -1618,7 +1627,10 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit = try!(repo.find_commit(oid));
         let tree = try!(commit.tree());
         for parent_id in commit.parent_ids() {
-            if tree.get_id(parent_id).is_some() {
+            // ignore commits pointed by this series
+            if try!(tree.get_name("series").ok_or(
+                    format!("Internal error: series {} did not contain \"series\"", commit.id())
+                    )).id() == parent_id {
                 hidden_ids.insert(parent_id);
             } else {
                 commit_stack.push(parent_id);
@@ -1981,10 +1993,12 @@ fn main() {
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
                     .arg(Arg::from_usage("--rfc 'Use [RFC PATCH] instead of the standard [PATCH] prefix'").conflicts_with("subject-prefix"))
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'")
-                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'"),
+                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'")
+                    .arg_from_usage("[name] 'Patch series to format'"),
                 SubCommand::with_name("log")
-                    .about("Show the history of the patch series")
-                    .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'"),
+                    .about("Show the history of a patch series")
+                    .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'")
+                    .arg_from_usage("[name] 'Patch series to show'"),
                 SubCommand::with_name("mv")
                     .about("Move (rename) a patch series")
                     .visible_alias("rename")
