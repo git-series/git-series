@@ -1447,7 +1447,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let to_stdout = m.is_present("stdout");
     let no_from = m.is_present("no-from");
 
-    let shead_commit = try!(peel_to_commit(try!(try!(repo.find_reference(SHEAD_REF)).resolve())));
+    let shead_commit = try!(sname_or_shead_commit(repo, m.value_of("name")));
     let stree = try!(shead_commit.tree());
 
     let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
@@ -1990,7 +1990,8 @@ fn main() {
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
                     .arg(Arg::from_usage("--rfc 'Use [RFC PATCH] instead of the standard [PATCH] prefix'").conflicts_with("subject-prefix"))
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'")
-                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'"),
+                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'")
+                    .arg_from_usage("[name] 'Patch series to format'"),
                 SubCommand::with_name("log")
                     .about("Show the history of a patch series")
                     .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'")
