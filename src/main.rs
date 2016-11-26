@@ -1627,7 +1627,10 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit = try!(repo.find_commit(oid));
         let tree = try!(commit.tree());
         for parent_id in commit.parent_ids() {
-            if tree.get_id(parent_id).is_some() {
+            // ignore commits pointed by this series
+            if try!(tree.get_name("series").ok_or(
+                    format!("Internal error: series {} did not contain \"series\"", commit.id())
+                    )).id() == parent_id {
                 hidden_ids.insert(parent_id);
             } else {
                 commit_stack.push(parent_id);
