@@ -103,6 +103,10 @@ fn peel_to_commit(r: Reference) -> Result<Commit> {
     Ok(try!(try!(r.peel(ObjectType::Commit)).into_commit().map_err(|obj| format!("Internal error: expected a commit: {}", obj.id()))))
 }
 
+fn revparse_to_commit<'repo>(repo: &'repo Repository, revstr: &str) -> Result<Commit<'repo>> {
+    Ok(try!(try!(repo.revparse_single(revstr)).into_commit().map_err(|obj| format!("Internal error: expected a commit: {}", obj.id()))))
+}
+
 fn commit_obj_summarize_components(commit: &mut Commit) -> Result<(String, String)> {
     let short_id_buf = try!(commit.as_object().short_id());
     let short_id = short_id_buf.as_str().unwrap();
@@ -533,16 +537,22 @@ fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn do_diff(out: &mut Output, repo: &Repository) -> Result<()> {
+fn do_diff(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let internals = try!(Internals::read(&repo));
     let config = try!(try!(repo.config()).snapshot());
     try!(out.auto_pager(&config, "diff", true));
     let diffcolors = try!(DiffColors::new(out, &config));
 
-    let working_tree = try!(repo.find_tree(try!(internals.working.write())));
-    let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
+    let from_tree = try!(match m.value_of("From-Commit") {
+        Some(revstr) => try!(revparse_to_commit(repo, revstr)).tree(),
+        None => repo.find_tree(try!(internals.staged.write())),
+    });
+    let to_tree = try!(match m.value_of("To-Commit") {
+        Some(revstr) => try!(revparse_to_commit(repo, revstr)).tree(),
+        None => repo.find_tree(try!(internals.working.write())),
+    });
 
-    write_series_diff(out, repo, &diffcolors, Some(&staged_tree), Some(&working_tree))
+    write_series_diff(out, repo, &diffcolors, Some(&from_tree), Some(&to_tree))
 }
 
 fn get_editor(config: &Config) -> Result<OsString> {
@@ -1973,7 +1983,9 @@ fn main() {
                 SubCommand::with_name("detach")
                     .about("Stop working on any patch series"),
                 SubCommand::with_name("diff")
-                    .about("Show changes in the patch series"),
+                    .about("Show changes in the patch series")
+                    .arg_from_usage("[From-Commit] 'Show changes since this commit'")
+                    .arg_from_usage("[To-Commit] 'Show changes until this commit'"),
                 SubCommand::with_name("format")
                     .about("Prepare patch series for email")
                     .arg_from_usage("--in-reply-to [Message-Id] 'Make the first mail a reply to the specified Message-Id'")
@@ -2024,7 +2036,7 @@ fn main() {
             ("cp", Some(ref sm)) => cp_mv(&repo, &sm, false),
             ("delete", Some(ref sm)) => delete(&repo, &sm),
             ("detach", _) => detach(&repo),
-            ("diff", _) => do_diff(&mut out, &repo),
+            ("diff", Some(ref sm)) => do_diff(&mut out, &repo, &sm),
             ("format", Some(ref sm)) => format(&mut out, &repo, &sm),
             ("log", Some(ref sm)) => log(&mut out, &repo, &sm),
             ("mv", Some(ref sm)) => cp_mv(&repo, &sm, true),
