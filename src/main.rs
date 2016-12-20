@@ -1724,6 +1724,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     }).collect::<Result<_>>());
 
     let interactive = m.is_present("interactive");
+    let exec_cmd = m.value_of("exec");
     let onto = match m.value_of("onto") {
         None => None,
         Some(onto) => {
@@ -1767,6 +1768,9 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let mut git_rebase_todo = try!(create.open(&git_rebase_todo_filename));
     for mut commit in commits {
         try!(writeln!(git_rebase_todo, "pick {}", try!(commit_obj_summarize(&mut commit))));
+        if let Some(cmd) = exec_cmd {
+            try!(writeln!(git_rebase_todo, "exec {}", cmd));
+        }
     }
     if let Some(onto) = onto {
         try!(writeln!(git_rebase_todo, "exec git series base {}", onto));
@@ -1993,6 +1997,7 @@ fn main() {
                     .about("Rebase the patch series")
                     .arg_from_usage("[onto] 'Commit to rebase onto'")
                     .arg_from_usage("-i, --interactive 'Interactively edit the list of commits'")
+                    .arg(Arg::from_usage("-x, --exec [cmd] 'Append \"exec <cmd>\" after each line creating a commit in the final history.'").requires("interactive"))
                     .group(ArgGroup::with_name("action").args(&["onto", "interactive"]).multiple(true).required(true)),
                 SubCommand::with_name("req")
                     .about("Generate a mail requesting a pull of the patch series")
