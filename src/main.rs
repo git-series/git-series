@@ -543,12 +543,18 @@ fn do_diff(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(out.auto_pager(&config, "diff", true));
     let diffcolors = try!(DiffColors::new(out, &config));
 
+    let cached = m.is_present("cached");
     let from_tree = try!(match m.value_of("From-Commit") {
         Some(revstr) => try!(revparse_to_commit(repo, revstr)).tree(),
+        None if cached => {
+            let shead = try!(repo.find_reference(SHEAD_REF));
+            try!(peel_to_commit(try!(shead.resolve()))).tree()
+        },
         None => repo.find_tree(try!(internals.staged.write())),
     });
     let to_tree = try!(match m.value_of("To-Commit") {
         Some(revstr) => try!(revparse_to_commit(repo, revstr)).tree(),
+        None if cached => repo.find_tree(try!(internals.staged.write())),
         None => repo.find_tree(try!(internals.working.write())),
     });
 
@@ -1984,6 +1990,7 @@ fn main() {
                     .about("Stop working on any patch series"),
                 SubCommand::with_name("diff")
                     .about("Show changes in the patch series")
+                    .arg(Arg::from_usage("--cached 'Show changes staged for the next commit'").alias("staged"))
                     .arg_from_usage("[From-Commit] 'Show changes since this commit'")
                     .arg_from_usage("[To-Commit] 'Show changes until this commit'"),
                 SubCommand::with_name("format")

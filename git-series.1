@@ -130,6 +130,12 @@ For modified commits, the series diff includes a simplified interdiff between
 the commits.
 
 .TP
+\fBgit series diff --cached \fR[\fIcommit\fR]
+Show changes staged for the next commit, relative to the named \fIcommit\fR.
+If \fIcommit\fR is omitted, changes are shown relative to SHEAD. \fB--staged\fR
+is a synonym of \fB--cached\fR.
+
+.TP
 \fBgit series diff \fIcommit\fR \fIcommit\fR
 Show changes between two arbitrary commits.
 
