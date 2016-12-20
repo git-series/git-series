@@ -538,7 +538,6 @@ fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn do_diff(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let internals = try!(Internals::read(&repo));
     let config = try!(try!(repo.config()).snapshot());
     try!(out.auto_pager(&config, "diff", true));
     let diffcolors = try!(DiffColors::new(out, &config));
@@ -550,12 +549,12 @@ fn do_diff(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             let shead = try!(repo.find_reference(SHEAD_REF));
             try!(peel_to_commit(try!(shead.resolve()))).tree()
         },
-        None => repo.find_tree(try!(internals.staged.write())),
+        None => repo.find_tree(try!(try!(Internals::read(&repo)).staged.write())),
     });
     let to_tree = try!(match m.value_of("To-Commit") {
         Some(revstr) => try!(revparse_to_commit(repo, revstr)).tree(),
-        None if cached => repo.find_tree(try!(internals.staged.write())),
-        None => repo.find_tree(try!(internals.working.write())),
+        None if cached => repo.find_tree(try!(try!(Internals::read(&repo)).staged.write())),
+        None => repo.find_tree(try!(try!(Internals::read(&repo)).working.write())),
     });
 
     write_series_diff(out, repo, &diffcolors, Some(&from_tree), Some(&to_tree))
