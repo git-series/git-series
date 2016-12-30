@@ -116,9 +116,10 @@ Any changes in progress, staged or unstaged, will remain intact.
 To start working on the branch again, use \fBgit series checkout\fR.
 
 .TP
-\fBgit series diff\fR
-Show changes to the patch series from the current working version to the staged
-version.
+\fBgit series diff \fR[\fIcommit\fR]
+Show changes in the working directory, relative to the named \fIcommit\fR. If
+\fIcommit\fR is omitted, changes are shown relative to the index.
+
 Changes to the cover letter appear as standard text diffs.
 If both the old and new version contain base and series entries, \fBgit series
 diff\fR will find and show the correspondence between the old and new versions
@@ -127,6 +128,16 @@ The series diff format shows reordered commits, deleted or added commits, and
 modified commits.
 For modified commits, the series diff includes a simplified interdiff between
 the commits.
+
+.TP
+\fBgit series diff --cached \fR[\fIcommit\fR]
+Show changes staged for the next commit, relative to the named \fIcommit\fR.
+If \fIcommit\fR is omitted, changes are shown relative to SHEAD. \fB--staged\fR
+is a synonym of \fB--cached\fR.
+
+.TP
+\fBgit series diff \fIcommit\fR \fIcommit\fR
+Show changes between two arbitrary commits.
 
 .TP
 \fBgit series format\fR [\fB--in-reply-to=\fR\fIMessage-Id\fR] \
