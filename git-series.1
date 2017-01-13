@@ -207,7 +207,7 @@ Moving the current series will make the destination the current series.
 You can also invoke this as \fBgit series rename\fR.
 
 .TP
-\fBgit series rebase\fR [\fB-i\fR|\fB--interactive\fR] [\fIonto\fR]
+\fBgit series rebase\fR [\fB-i\fR|\fB--interactive\fR] [\fB--exec \fIcmd\fR] [\fIonto\fR]
 Rebase the patch series, either onto a new base, interactively, or both.
 The patch series must have a base set with \fBgit series base\fR, to identify
 the series of patches to rebase.
@@ -222,6 +222,13 @@ refname~2.
 Interactively edit the list of commits.
 This uses the same format and syntax as \fBgit rebase -i\fR, to allow
 reordering, dropping, combining, or editing commits.
+.TP
+\fB-x \fIcmd\fR | \fB--exec \fIcmd\fR
+Append "exec \fIcmd\fR" after each line creating a commit in the final history.
+\fIcmd\fR will be interpreted as one or more shell commands. This option can
+only be used in conjunction with the \fB--interactive\fR option. You may
+execute several commands by giving more than one \fB--exec\fR.
+
 .RE
 
 .TP
