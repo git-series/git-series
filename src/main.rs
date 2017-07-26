@@ -2013,7 +2013,7 @@ fn main() {
     let mut out = Output::new();
 
     let err = || -> Result<()> {
-        let repo = try!(Repository::discover("."));
+        let repo = try!(Repository::open_from_env());
         match m.subcommand() {
             ("", _) => series(&mut out, &repo),
             ("add", Some(ref sm)) => add(&repo, &sm),
