@@ -1065,7 +1065,7 @@ fn sanitize_summary(summary: &str) -> String {
         }
         prev_dot = c == '.';
     }
-    let end = s.trim_right_matches(|c| c == '.' || c == '-').len();
+    let end = s.trim_end_matches(|c| c == '.' || c == '-').len();
     s.truncate(end);
     s
 }
@@ -1090,8 +1090,8 @@ fn test_sanitize_summary() {
 
 fn split_message(message: &str) -> (&str, &str) {
     let mut iter = message.splitn(2, '\n');
-    let subject = iter.next().unwrap().trim_right();
-    let body = iter.next().map(|s| s.trim_left()).unwrap_or("");
+    let subject = iter.next().unwrap().trim_end();
+    let body = iter.next().map(|s| s.trim_start()).unwrap_or("");
     (subject, body)
 }
 
