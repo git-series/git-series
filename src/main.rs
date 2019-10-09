@@ -385,12 +385,12 @@ fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
     let result = {
         let mut opts = git2::build::CheckoutBuilder::new();
         opts.safe();
-        opts.notify_on(git2::CHECKOUT_NOTIFICATION_CONFLICT | git2::CHECKOUT_NOTIFICATION_DIRTY);
+        opts.notify_on(git2::CheckoutNotificationType::CONFLICT | git2::CheckoutNotificationType::DIRTY);
         opts.notify(|t, path, _, _, _| {
             let path = path.unwrap().to_owned();
-            if t == git2::CHECKOUT_NOTIFICATION_CONFLICT {
+            if t == git2::CheckoutNotificationType::CONFLICT {
                 conflicts.push(path);
-            } else if t == git2::CHECKOUT_NOTIFICATION_DIRTY {
+            } else if t == git2::CheckoutNotificationType::DIRTY {
                 dirty.push(path);
             }
             true
@@ -1141,7 +1141,7 @@ impl DiffColors {
 
 fn diffstat(diff: &Diff) -> Result<String> {
     let stats = try!(diff.stats());
-    let stats_buf = try!(stats.to_buf(git2::DIFF_STATS_FULL|git2::DIFF_STATS_INCLUDE_SUMMARY, 72));
+    let stats_buf = try!(stats.to_buf(git2::DiffStatsFormat::FULL|git2::DiffStatsFormat::INCLUDE_SUMMARY, 72));
     Ok(stats_buf.as_str().unwrap().to_string())
 }
 
@@ -1219,7 +1219,7 @@ fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff, simplify:
 
 fn get_commits(repo: &Repository, base: Oid, series: Oid) -> Result<Vec<Commit>> {
     let mut revwalk = try!(repo.revwalk());
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL|git2::SORT_REVERSE);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
     try!(revwalk.push(series));
     try!(revwalk.hide(base));
     revwalk.map(|c| {
@@ -1445,7 +1445,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let base = try!(stree.get_name("base").ok_or("Cannot format series; no base set.\nUse \"git series base\" to set base."));
 
     let mut revwalk = try!(repo.revwalk());
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL|git2::SORT_REVERSE);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
     try!(revwalk.push(series.id()));
     try!(revwalk.hide(base.id()));
     let mut commits: Vec<Commit> = try!(revwalk.map(|c| {
@@ -1627,7 +1627,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     }
 
     let mut revwalk = try!(repo.revwalk());
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL);
     try!(revwalk.push(shead_id));
     for id in hidden_ids {
         try!(revwalk.hide(id));
@@ -1711,7 +1711,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     }
 
     let mut revwalk = try!(repo.revwalk());
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL|git2::SORT_REVERSE);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
     try!(revwalk.push(series.id()));
     try!(revwalk.hide(base.id()));
     let commits: Vec<Commit> = try!(revwalk.map(|c| {
@@ -1887,7 +1887,7 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     };
 
     let mut revwalk = try!(repo.revwalk());
-    revwalk.set_sorting(git2::SORT_TOPOLOGICAL|git2::SORT_REVERSE);
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
     try!(revwalk.push(series_id));
     try!(revwalk.hide(base.id()));
     let mut commits: Vec<Commit> = try!(revwalk.map(|c| {
