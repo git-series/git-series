@@ -1496,12 +1496,12 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     } else {
         DiffColors::plain()
     };
-    let mut out : Box<IoWrite> = if to_stdout {
+    let mut out : Box<dyn IoWrite> = if to_stdout {
         Box::new(out)
     } else {
         Box::new(std::io::stdout())
     };
-    let patch_file = |name: &str| -> Result<Box<IoWrite>> {
+    let patch_file = |name: &str| -> Result<Box<dyn IoWrite>> {
         let name = format!("{}{}", file_prefix, name);
         println!("{}", name);
         Ok(Box::new(try!(File::create(name))))
