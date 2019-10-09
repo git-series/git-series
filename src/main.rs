@@ -1017,7 +1017,7 @@ fn shortlog(commits: &mut [Commit]) -> String {
     let mut s = String::new();
     let mut author_map = std::collections::HashMap::new();
 
-    for mut commit in commits {
+    for commit in commits {
         let author = commit.author().name().unwrap().to_string();
         author_map.entry(author).or_insert(Vec::new()).push(commit.summary().unwrap().to_string());
     }
