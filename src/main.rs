@@ -1,10 +1,10 @@
 extern crate ansi_term;
+extern crate atty;
 extern crate chrono;
 #[macro_use]
 extern crate clap;
 extern crate colorparse;
 extern crate git2;
-extern crate isatty;
 extern crate munkres;
 #[macro_use]
 extern crate quick_error;
@@ -395,7 +395,7 @@ fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
             }
             true
         });
-        if isatty::stdout_isatty() {
+        if atty::is(atty::Stream::Stdout) {
             opts.progress(|_, completed, total| {
                 let total = total.to_string();
                 print!("\rChecking out files: {1:0$}/{2}", total.len(), completed, total);
@@ -573,7 +573,7 @@ fn get_editor(config: &Config) -> Result<OsString> {
 // Get the pager to use; with for_cmd set, get the pager for use by the
 // specified git command.  If get_pager returns None, don't use a pager.
 fn get_pager(config: &Config, for_cmd: &str, default: bool) -> Option<OsString> {
-    if !isatty::stdout_isatty() {
+    if !atty::is(atty::Stream::Stdout) {
         return None;
     }
     // pager.cmd can contain a boolean (if false, force no pager) or a
@@ -654,7 +654,7 @@ impl Output {
             }
             let child = try!(cmd.spawn());
             self.pager = Some(child);
-            self.include_stderr = isatty::stderr_isatty();
+            self.include_stderr = atty::is(atty::Stream::Stderr);
         }
         Ok(())
     }
@@ -679,7 +679,7 @@ impl Output {
             if !color_pager {
                 return Ok(Style::new());
             }
-        } else if !isatty::stdout_isatty() {
+        } else if !atty::is(atty::Stream::Stdout) {
             return Ok(Style::new());
         }
         let cfg = format!("color.{}.{}", command, slot);

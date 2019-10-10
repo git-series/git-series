@@ -9,11 +9,11 @@ description = "Track patch series in git"
 
 [dependencies]
 ansi_term = "0.9.0"
+atty = "0.2.13"
 chrono = "0.2.22"
 clap = "2.7.0"
 colorparse = "2.0"
 git2 = "0.10"
-isatty = "0.1.1"
 munkres = "0.3.0"
 quick-error = "1.0"
 tempdir = "0.3.4"
