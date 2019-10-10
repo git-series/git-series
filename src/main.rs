@@ -1981,7 +1981,7 @@ fn main() {
                     .arg_from_usage("-v, --reroll-count=[N] 'Mark the patch series as PATCH vN'")
                     .arg(Arg::from_usage("--rfc 'Use [RFC PATCH] instead of the standard [PATCH] prefix'").conflicts_with("subject-prefix"))
                     .arg_from_usage("--stdout 'Write patches to stdout rather than files'")
-                    .arg_from_usage("--subject-prefix [Subject-Prefix] 'Use [Subject-Prefix] instead of the standard [PATCH] prefix'"),
+                    .arg_from_usage("--subject-prefix [prefix] 'Use [prefix] instead of the standard [PATCH] prefix'"),
                 SubCommand::with_name("log")
                     .about("Show the history of the patch series")
                     .arg_from_usage("-p, --patch 'Include a patch for each change committed to the series'"),

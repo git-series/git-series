@@ -134,7 +134,7 @@ the commits.
 [\fB-v\fR \fIN\fR | \fB--reroll-count=\fR\fIN\fR] \
 [\fB--rfc\fR] \
 [\fB--stdout\fR] \
-[\fB--subject-prefix=\fR\fISubject-Prefix\fR]
+[\fB--subject-prefix=\fR\fIprefix\fR]
 Prepare the patch series to send via email.
 This creates one file per patch in the series, plus one additional file for the
 cover letter if any.
@@ -172,8 +172,8 @@ Use [RFC PATCH] instead of the standard [PATCH] prefix.
 .B --stdout
 Write the entire patch series to stdout rather than to separate patch files.
 .TP
-.BI --subject-prefix= Subject-Prefix
-Use [\fISubject-Prefix\fR] instead of the standard [PATCH] prefix.
+.BI --subject-prefix= prefix
+Use [\fIprefix\fR] instead of the standard [PATCH] prefix.
 .RE
 
 .TP
