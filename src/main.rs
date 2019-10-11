@@ -37,6 +37,10 @@ quick_error! {
             cause(err)
             display("{}", err)
         }
+        Munkres(err: munkres::Error) {
+            from()
+            display("{:?}", err)
+        }
         Msg(msg: String) {
             from()
             from(s: &'static str) -> (s.to_string())
@@ -1286,14 +1290,14 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
         }
     }
     let mut weight_matrix = munkres::WeightMatrix::from_row_vec(n, weights);
-    let result = munkres::solve_assignment(&mut weight_matrix);
+    let result = try!(munkres::solve_assignment(&mut weight_matrix));
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     enum CommitState { Unhandled, Handled, Deleted };
     let mut commits2_from1: Vec<_> = std::iter::repeat(None).take(ncommits2).collect();
     let mut commits1_state: Vec<_> = std::iter::repeat(CommitState::Unhandled).take(ncommits1).collect();
     let mut commit_pairs = Vec::with_capacity(n);
-    for (i1, i2) in result {
+    for munkres::Position { row: i1, column: i2 } in result {
         if i1 < ncommits1 {
             if i2 < ncommits2 {
                 commits2_from1[i2] = Some(i1);
