@@ -99,10 +99,6 @@ const WORKING_PREFIX: &'static str = "refs/git-series-internals/working/";
 const GIT_FILEMODE_BLOB: u32 = 0o100644;
 const GIT_FILEMODE_COMMIT: u32 = 0o160000;
 
-fn zero_oid() -> Oid {
-    Oid::from_bytes(b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00").unwrap()
-}
-
 fn commit_obj_summarize_components(commit: &mut Commit) -> Result<(String, String)> {
     let short_id_buf = try!(commit.as_object().short_id());
     let short_id = short_id_buf.as_str().unwrap();
@@ -463,7 +459,7 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let current_base_id = match try!(internals.working.get("base")) {
         Some(entry) => entry.id(),
-        _ => zero_oid(),
+        _ => Oid::zero(),
     };
 
     if !m.is_present("delete") && !m.is_present("base") {
@@ -476,7 +472,7 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
     }
 
     let new_base_id = if m.is_present("delete") {
-        zero_oid()
+        Oid::zero()
     } else {
         let base = m.value_of("base").unwrap();
         let base_object = try!(repo.revparse_single(base));
@@ -932,7 +928,7 @@ fn cover(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let mut internals = try!(Internals::read(repo));
 
     let (working_cover_id, working_cover_content) = match try!(internals.working.get("cover")) {
-        None => (zero_oid(), String::new()),
+        None => (Oid::zero(), String::new()),
         Some(entry) => (entry.id(), try!(std::str::from_utf8(try!(repo.find_blob(entry.id())).content())).to_string()),
     };
 
