@@ -103,10 +103,6 @@ fn zero_oid() -> Oid {
     Oid::from_bytes(b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00").unwrap()
 }
 
-fn peel_to_commit(r: Reference) -> Result<Commit> {
-    Ok(try!(try!(r.peel(ObjectType::Commit)).into_commit().map_err(|obj| format!("Internal error: expected a commit: {}", obj.id()))))
-}
-
 fn commit_obj_summarize_components(commit: &mut Commit) -> Result<(String, String)> {
     let short_id_buf = try!(commit.as_object().short_id());
     let short_id = short_id_buf.as_str().unwrap();
@@ -295,7 +291,7 @@ fn unadd(repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let mut internals = try!(Internals::read(repo));
     if started {
-        let shead_commit = try!(peel_to_commit(shead));
+        let shead_commit = try!(shead.peel_to_commit());
         let shead_tree = try!(shead_commit.tree());
 
         for file in m.values_of("change").unwrap() {
@@ -364,7 +360,7 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
 
 fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let head = try!(repo.head());
-    let head_commit = try!(peel_to_commit(head));
+    let head_commit = try!(head.peel_to_commit());
     let head_id = head_commit.as_object().id();
 
     let name = m.value_of("name").unwrap();
@@ -447,7 +443,7 @@ fn checkout(repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(checkout_tree(repo, &new_head));
 
     let head = try!(repo.head());
-    let head_commit = try!(peel_to_commit(head));
+    let head_commit = try!(head.peel_to_commit());
     let head_id = head_commit.as_object().id();
     println!("Previous HEAD position was {}", try!(commit_summarize(&repo, head_id)));
 
@@ -800,7 +796,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
 
     let shead_commit = match shead.resolve() {
-        Ok(r) => Some(try!(peel_to_commit(r))),
+        Ok(r) => Some(try!(r.peel_to_commit())),
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
             status.push(color_header.paint("\nInitial series commit\n"));
             None
@@ -1442,7 +1438,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let to_stdout = m.is_present("stdout");
     let no_from = m.is_present("no-from");
 
-    let shead_commit = try!(peel_to_commit(try!(try!(repo.find_reference(SHEAD_REF)).resolve())));
+    let shead_commit = try!(try!(try!(repo.find_reference(SHEAD_REF)).resolve()).peel_to_commit());
     let stree = try!(shead_commit.tree());
 
     let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
@@ -1810,7 +1806,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
 fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let config = try!(try!(repo.config()).snapshot());
     let shead = try!(repo.find_reference(SHEAD_REF));
-    let shead_commit = try!(peel_to_commit(try!(shead.resolve())));
+    let shead_commit = try!(try!(shead.resolve()).peel_to_commit());
     let stree = try!(shead_commit.tree());
 
     let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
