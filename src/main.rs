@@ -413,10 +413,9 @@ fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
     }
     println!("");
     if !dirty.is_empty() {
-        let mut stderr = std::io::stderr();
-        writeln!(stderr, "Files with changes unaffected by checkout:").unwrap();
+        eprintln!("Files with changes unaffected by checkout:");
         for path in dirty {
-            writeln!(stderr, "        {}", path.to_string_lossy()).unwrap();
+            eprintln!("        {}", path.to_string_lossy());
         }
     }
     Ok(())
@@ -686,10 +685,10 @@ impl Output {
     fn write_err(&mut self, msg: &str) {
         if self.include_stderr {
             if write!(self, "{}", msg).is_err() {
-                write!(std::io::stderr(), "{}", msg).unwrap();
+                eprint!("{}", msg);
             }
         } else {
-            write!(std::io::stderr(), "{}", msg).unwrap();
+            eprint!("{}", msg);
         }
     }
 }
@@ -699,7 +698,7 @@ impl Drop for Output {
         if let Some(ref mut child) = self.pager {
             let status = child.wait().unwrap();
             if !status.success() {
-                writeln!(std::io::stderr(), "Pager exited with status {}", status).unwrap();
+                eprintln!("Pager exited with status {}", status);
             }
         }
     }
