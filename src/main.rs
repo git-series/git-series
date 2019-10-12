@@ -57,15 +57,15 @@ quick_error! {
 
 type Result<T> = std::result::Result<T, Error>;
 
-const COMMIT_MESSAGE_COMMENT: &'static str = "
+const COMMIT_MESSAGE_COMMENT: &str = "
 # Please enter the commit message for your changes. Lines starting
 # with '#' will be ignored, and an empty message aborts the commit.
 ";
-const COVER_LETTER_COMMENT: &'static str = "
+const COVER_LETTER_COMMENT: &str = "
 # Please enter the cover letter for your changes. Lines starting
 # with '#' will be ignored, and an empty message aborts the change.
 ";
-const REBASE_COMMENT: &'static str = "\
+const REBASE_COMMENT: &str = "\
 #
 # Commands:
 # p, pick = use commit
@@ -82,19 +82,19 @@ const REBASE_COMMENT: &'static str = "\
 #
 # However, if you remove everything, the rebase will be aborted.
 ";
-const SCISSOR_LINE: &'static str = "\
+const SCISSOR_LINE: &str = "\
 # ------------------------ >8 ------------------------";
-const SCISSOR_COMMENT: &'static str = "\
+const SCISSOR_COMMENT: &str = "\
 # Do not touch the line above.
 # Everything below will be removed.
 ";
 
-const SHELL_METACHARS: &'static str = "|&;<>()$`\\\"' \t\n*?[#~=%";
+const SHELL_METACHARS: &str = "|&;<>()$`\\\"' \t\n*?[#~=%";
 
-const SERIES_PREFIX: &'static str = "refs/heads/git-series/";
-const SHEAD_REF: &'static str = "refs/SHEAD";
-const STAGED_PREFIX: &'static str = "refs/git-series-internals/staged/";
-const WORKING_PREFIX: &'static str = "refs/git-series-internals/working/";
+const SERIES_PREFIX: &str = "refs/heads/git-series/";
+const SHEAD_REF: &str = "refs/SHEAD";
+const STAGED_PREFIX: &str = "refs/git-series-internals/staged/";
+const WORKING_PREFIX: &str = "refs/git-series-internals/working/";
 
 const GIT_FILEMODE_BLOB: u32 = 0o100644;
 const GIT_FILEMODE_COMMIT: u32 = 0o160000;
