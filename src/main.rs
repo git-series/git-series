@@ -597,7 +597,7 @@ fn get_pager(config: &Config, for_cmd: &str, default: bool) -> Option<OsString> 
         } else {
             Some("less".into())
         };
-    pager.and_then(|p| if p.is_empty() || p == OsString::from("cat") { None } else { Some(p) })
+    pager.and_then(|p| if p.is_empty() || p == "cat" { None } else { Some(p) })
 }
 
 /// Construct a Command, using the shell if the command contains shell metachars
