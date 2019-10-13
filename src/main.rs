@@ -142,7 +142,7 @@ fn reference_matching_opt<'repo>(repo: &'repo Repository, name: &str, id: Oid, f
 fn parents_from_ids(repo: &Repository, mut parents: Vec<Oid>) -> Result<Vec<Commit>> {
     parents.sort();
     parents.dedup();
-    parents.drain(..).map(|id| Ok(repo.find_commit(id)?)).collect::<Result<Vec<Commit>>>()
+    parents.drain(..).map(|id| Ok(repo.find_commit(id)?)).collect()
 }
 
 struct Internals<'repo> {
