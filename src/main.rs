@@ -101,24 +101,24 @@ const GIT_FILEMODE_BLOB: u32 = 0o100644;
 const GIT_FILEMODE_COMMIT: u32 = 0o160000;
 
 fn commit_obj_summarize_components(commit: &mut Commit) -> Result<(String, String)> {
-    let short_id_buf = try!(commit.as_object().short_id());
+    let short_id_buf = commit.as_object().short_id()?;
     let short_id = short_id_buf.as_str().unwrap();
     let summary = String::from_utf8_lossy(commit.summary_bytes().unwrap());
     Ok((short_id.to_string(), summary.to_string()))
 }
 
 fn commit_summarize_components(repo: &Repository, id: Oid) -> Result<(String, String)> {
-    let mut commit = try!(repo.find_commit(id));
+    let mut commit = repo.find_commit(id)?;
     commit_obj_summarize_components(&mut commit)
 }
 
 fn commit_obj_summarize(commit: &mut Commit) -> Result<String> {
-    let (short_id, summary) = try!(commit_obj_summarize_components(commit));
+    let (short_id, summary) = commit_obj_summarize_components(commit)?;
     Ok(format!("{} {}", short_id, summary))
 }
 
 fn commit_summarize(repo: &Repository, id: Oid) -> Result<String> {
-    let mut commit = try!(repo.find_commit(id));
+    let mut commit = repo.find_commit(id)?;
     commit_obj_summarize(&mut commit)
 }
 
@@ -133,16 +133,16 @@ fn notfound_to_none<T>(result: std::result::Result<T, git2::Error>) -> Result<Op
 // If current_id_opt is Some, acts like reference_matching.  If current_id_opt is None, acts like
 // reference.
 fn reference_matching_opt<'repo>(repo: &'repo Repository, name: &str, id: Oid, force: bool, current_id_opt: Option<Oid>, log_message: &str) -> Result<Reference<'repo>> {
-    match current_id_opt {
-        None => Ok(try!(repo.reference(name, id, force, log_message))),
-        Some(current_id) => Ok(try!(repo.reference_matching(name, id, force, current_id, log_message))),
-    }
+    Ok(match current_id_opt {
+        None => repo.reference(name, id, force, log_message)?,
+        Some(current_id) => repo.reference_matching(name, id, force, current_id, log_message)?,
+    })
 }
 
 fn parents_from_ids(repo: &Repository, mut parents: Vec<Oid>) -> Result<Vec<Commit>> {
     parents.sort();
     parents.dedup();
-    parents.drain(..).map(|id| Ok(try!(repo.find_commit(id)))).collect::<Result<Vec<Commit>>>()
+    parents.drain(..).map(|id| Ok(repo.find_commit(id)?)).collect::<Result<Vec<Commit>>>()
 }
 
 struct Internals<'repo> {
@@ -152,35 +152,35 @@ struct Internals<'repo> {
 
 impl<'repo> Internals<'repo> {
     fn read(repo: &'repo Repository) -> Result<Self> {
-        let shead = try!(repo.find_reference(SHEAD_REF));
-        let series_name = try!(shead_series_name(&shead));
-        let mut internals = try!(Internals::read_series(repo, &series_name));
-        try!(internals.update_series(repo));
+        let shead = repo.find_reference(SHEAD_REF)?;
+        let series_name = shead_series_name(&shead)?;
+        let mut internals = Internals::read_series(repo, &series_name)?;
+        internals.update_series(repo)?;
         Ok(internals)
     }
 
     fn read_series(repo: &'repo Repository, series_name: &str) -> Result<Self> {
-        let committed_id = try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, series_name))));
+        let committed_id = notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, series_name)))?;
         let maybe_get_ref = |prefix: &str| -> Result<TreeBuilder<'repo>> {
-            match try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", prefix, series_name)))).or(committed_id) {
+            match notfound_to_none(repo.refname_to_id(&format!("{}{}", prefix, series_name)))?.or(committed_id) {
                 Some(id) => {
-                    let c = try!(repo.find_commit(id));
-                    let t = try!(c.tree());
-                    Ok(try!(repo.treebuilder(Some(&t))))
+                    let c = repo.find_commit(id)?;
+                    let t = c.tree()?;
+                    Ok(repo.treebuilder(Some(&t))?)
                 }
-                None => Ok(try!(repo.treebuilder(None))),
+                None => Ok(repo.treebuilder(None)?),
             }
         };
         Ok(Internals {
-            staged: try!(maybe_get_ref(STAGED_PREFIX)),
-            working: try!(maybe_get_ref(WORKING_PREFIX)),
+            staged: maybe_get_ref(STAGED_PREFIX)?,
+            working: maybe_get_ref(WORKING_PREFIX)?,
         })
     }
 
     fn exists(repo: &'repo Repository, series_name: &str) -> Result<bool> {
         for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
             let prefixed_name = format!("{}{}", prefix, series_name);
-            if try!(notfound_to_none(repo.refname_to_id(&prefixed_name))).is_some() {
+            if notfound_to_none(repo.refname_to_id(&prefixed_name))?.is_some() {
                 return Ok(true);
             }
         }
@@ -192,10 +192,10 @@ impl<'repo> Internals<'repo> {
         let mut copied_any = false;
         for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
             let prefixed_source = format!("{}{}", prefix, source);
-            if let Some(r) = try!(notfound_to_none(repo.find_reference(&prefixed_source))) {
-                let oid = try!(r.target().ok_or(format!("Internal error: \"{}\" is a symbolic reference", prefixed_source)));
+            if let Some(r) = notfound_to_none(repo.find_reference(&prefixed_source))? {
+                let oid = r.target().ok_or(format!("Internal error: \"{}\" is a symbolic reference", prefixed_source))?;
                 let prefixed_dest = format!("{}{}", prefix, dest);
-                try!(repo.reference(&prefixed_dest, oid, false, &format!("copied from {}", prefixed_source)));
+                repo.reference(&prefixed_dest, oid, false, &format!("copied from {}", prefixed_source))?;
                 copied_any = true;
             }
         }
@@ -207,8 +207,8 @@ impl<'repo> Internals<'repo> {
         let mut deleted_any = false;
         for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
             let prefixed_name = format!("{}{}", prefix, series_name);
-            if let Some(mut r) = try!(notfound_to_none(repo.find_reference(&prefixed_name))) {
-                try!(r.delete());
+            if let Some(mut r) = notfound_to_none(repo.find_reference(&prefixed_name))? {
+                r.delete()?;
                 deleted_any = true;
             }
         }
@@ -216,29 +216,29 @@ impl<'repo> Internals<'repo> {
     }
 
     fn update_series(&mut self, repo: &'repo Repository) -> Result<()> {
-        let head_id = try!(repo.refname_to_id("HEAD"));
-        try!(self.working.insert("series", head_id, GIT_FILEMODE_COMMIT as i32));
+        let head_id = repo.refname_to_id("HEAD")?;
+        self.working.insert("series", head_id, GIT_FILEMODE_COMMIT as i32)?;
         Ok(())
     }
 
     fn write(&self, repo: &'repo Repository) -> Result<()> {
-        let config = try!(repo.config());
-        let author = try!(get_signature(&config, "AUTHOR"));
-        let committer = try!(get_signature(&config, "COMMITTER"));
+        let config = repo.config()?;
+        let author = get_signature(&config, "AUTHOR")?;
+        let committer = get_signature(&config, "COMMITTER")?;
 
-        let shead = try!(repo.find_reference(SHEAD_REF));
-        let series_name = try!(shead_series_name(&shead));
+        let shead = repo.find_reference(SHEAD_REF)?;
+        let series_name = shead_series_name(&shead)?;
         let maybe_commit = |prefix: &str, tb: &TreeBuilder| -> Result<()> {
-            let tree_id = try!(tb.write());
+            let tree_id = tb.write()?;
             let refname = format!("{}{}", prefix, series_name);
-            let old_commit_id = try!(notfound_to_none(repo.refname_to_id(&refname)));
+            let old_commit_id = notfound_to_none(repo.refname_to_id(&refname))?;
             if let Some(id) = old_commit_id {
-                let c = try!(repo.find_commit(id));
+                let c = repo.find_commit(id)?;
                 if c.tree_id() == tree_id {
                     return Ok(());
                 }
             }
-            let tree = try!(repo.find_tree(tree_id));
+            let tree = repo.find_tree(tree_id)?;
             let mut parents = Vec::new();
             // Include all commits from tree, to keep them reachable and fetchable. Include base,
             // because series might not have it as an ancestor; we don't enforce that until commit.
@@ -247,15 +247,15 @@ impl<'repo> Internals<'repo> {
                     parents.push(e.id());
                 }
             }
-            let parents = try!(parents_from_ids(repo, parents));
+            let parents = parents_from_ids(repo, parents)?;
             let parents_ref: Vec<&_> = parents.iter().collect();
-            let commit_id = try!(repo.commit(None, &author, &committer, &refname, &tree, &parents_ref));
-            try!(repo.reference_ensure_log(&refname));
-            try!(reference_matching_opt(repo, &refname, commit_id, true, old_commit_id, &format!("commit: {}", refname)));
+            let commit_id = repo.commit(None, &author, &committer, &refname, &tree, &parents_ref)?;
+            repo.reference_ensure_log(&refname)?;
+            reference_matching_opt(repo, &refname, commit_id, true, old_commit_id, &format!("commit: {}", refname))?;
             Ok(())
         };
-        try!(maybe_commit(STAGED_PREFIX, &self.staged));
-        try!(maybe_commit(WORKING_PREFIX, &self.working));
+        maybe_commit(STAGED_PREFIX, &self.staged)?;
+        maybe_commit(WORKING_PREFIX, &self.working)?;
         Ok(())
     }
 }
@@ -265,13 +265,13 @@ fn diff_empty(diff: &Diff) -> bool {
 }
 
 fn add(repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let mut internals = try!(Internals::read(repo));
+    let mut internals = Internals::read(repo)?;
     for file in m.values_of_os("change").unwrap() {
-        match try!(internals.working.get(file)) {
-            Some(entry) => { try!(internals.staged.insert(file, entry.id(), entry.filemode())); }
+        match internals.working.get(file)? {
+            Some(entry) => { internals.staged.insert(file, entry.id(), entry.filemode())?; }
             None => {
-                if try!(internals.staged.get(file)).is_some() {
-                    try!(internals.staged.remove(file));
+                if internals.staged.get(file)?.is_some() {
+                    internals.staged.remove(file)?;
                 }
             }
         }
@@ -280,35 +280,35 @@ fn add(repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn unadd(repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let shead = try!(repo.find_reference(SHEAD_REF));
+    let shead = repo.find_reference(SHEAD_REF)?;
     let started = {
-        let shead_target = try!(shead.symbolic_target().ok_or("SHEAD not a symbolic reference"));
-        try!(notfound_to_none(repo.find_reference(shead_target))).is_some()
+        let shead_target = shead.symbolic_target().ok_or("SHEAD not a symbolic reference")?;
+        notfound_to_none(repo.find_reference(shead_target))?.is_some()
     };
 
-    let mut internals = try!(Internals::read(repo));
+    let mut internals = Internals::read(repo)?;
     if started {
-        let shead_commit = try!(shead.peel_to_commit());
-        let shead_tree = try!(shead_commit.tree());
+        let shead_commit = shead.peel_to_commit()?;
+        let shead_tree = shead_commit.tree()?;
 
         for file in m.values_of("change").unwrap() {
             match shead_tree.get_name(file) {
                 Some(entry) => {
-                    try!(internals.staged.insert(file, entry.id(), entry.filemode()));
+                    internals.staged.insert(file, entry.id(), entry.filemode())?;
                 }
-                None => { try!(internals.staged.remove(file)); }
+                None => { internals.staged.remove(file)?; }
             }
         }
     } else {
         for file in m.values_of("change").unwrap() {
-            try!(internals.staged.remove(file))
+            internals.staged.remove(file)?
         }
     }
     internals.write(repo)
 }
 
 fn shead_series_name(shead: &Reference) -> Result<String> {
-    let shead_target = try!(shead.symbolic_target().ok_or("SHEAD not a symbolic reference"));
+    let shead_target = shead.symbolic_target().ok_or("SHEAD not a symbolic reference")?;
     if !shead_target.starts_with(SERIES_PREFIX) {
         return Err(format!("SHEAD does not start with {}", SERIES_PREFIX).into());
     }
@@ -319,12 +319,12 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
     let mut refs = Vec::new();
     for prefix in [SERIES_PREFIX, STAGED_PREFIX, WORKING_PREFIX].iter() {
         let l = prefix.len();
-        for r in try!(repo.references_glob(&[prefix, "*"].concat())).names() {
-            refs.push(try!(r)[l..].to_string());
+        for r in repo.references_glob(&[prefix, "*"].concat())?.names() {
+            refs.push(r?[l..].to_string());
         }
     }
-    let shead_target = if let Some(shead) = try!(notfound_to_none(repo.find_reference(SHEAD_REF))) {
-        Some(try!(shead_series_name(&shead)))
+    let shead_target = if let Some(shead) = notfound_to_none(repo.find_reference(SHEAD_REF))? {
+        Some(shead_series_name(&shead)?)
     } else {
         None
     };
@@ -332,47 +332,47 @@ fn series(out: &mut Output, repo: &Repository) -> Result<()> {
     refs.sort();
     refs.dedup();
 
-    let config = try!(try!(repo.config()).snapshot());
-    try!(out.auto_pager(&config, "branch", false));
-    let color_current = try!(out.get_color(&config, "branch", "current", "green"));
-    let color_plain = try!(out.get_color(&config, "branch", "plain", "normal"));
+    let config = repo.config()?.snapshot()?;
+    out.auto_pager(&config, "branch", false)?;
+    let color_current = out.get_color(&config, "branch", "current", "green")?;
+    let color_plain = out.get_color(&config, "branch", "plain", "normal")?;
     for name in refs.iter() {
         let (star, color) = if Some(name) == shead_target.as_ref() {
             ('*', color_current)
         } else {
             (' ', color_plain)
         };
-        let new = if try!(notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, name)))).is_none() {
+        let new = if notfound_to_none(repo.refname_to_id(&format!("{}{}", SERIES_PREFIX, name)))?.is_none() {
             " (new, no commits yet)"
         } else {
             ""
         };
-        try!(writeln!(out, "{} {}{}", star, color.paint(name as &str), new));
+        writeln!(out, "{} {}{}", star, color.paint(name as &str), new)?;
     }
     if refs.is_empty() {
-        try!(writeln!(out, "No series; use \"git series start <name>\" to start"));
+        writeln!(out, "No series; use \"git series start <name>\" to start")?;
     }
     Ok(())
 }
 
 fn start(repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let head = try!(repo.head());
-    let head_commit = try!(head.peel_to_commit());
+    let head = repo.head()?;
+    let head_commit = head.peel_to_commit()?;
     let head_id = head_commit.as_object().id();
 
     let name = m.value_of("name").unwrap();
-    if try!(Internals::exists(repo, name)) {
+    if Internals::exists(repo, name)? {
         return Err(format!("Series {} already exists.\nUse checkout to resume working on an existing patch series.", name).into());
     }
     let prefixed_name = &[SERIES_PREFIX, name].concat();
-    try!(repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series start {}", name)));
+    repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series start {}", name))?;
 
-    let internals = try!(Internals::read(repo));
-    try!(internals.write(repo));
+    let internals = Internals::read(repo)?;
+    internals.write(repo)?;
 
     // git status parses this reflog string; the prefix must remain "checkout: moving from ".
-    try!(repo.reference("HEAD", head_id, true, &format!("checkout: moving from {} to {} (git series start {})", head_id, head_id, name)));
-    println!("HEAD is now detached at {}", try!(commit_summarize(&repo, head_id)));
+    repo.reference("HEAD", head_id, true, &format!("checkout: moving from {} to {} (git series start {})", head_id, head_id, name))?;
+    println!("HEAD is now detached at {}", commit_summarize(&repo, head_id)?);
     Ok(())
 }
 
@@ -410,7 +410,7 @@ fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
             writeln!(msg, "Please, commit your changes or stash them before you switch series.").unwrap();
             return Err(msg.into());
         }
-        _ => try!(result),
+        _ => result?,
     }
     println!("");
     if !dirty.is_empty() {
@@ -428,36 +428,36 @@ fn checkout(repo: &Repository, m: &ArgMatches) -> Result<()> {
         s => { return Err(format!("{:?} in progress; cannot checkout patch series", s).into()); }
     }
     let name = m.value_of("name").unwrap();
-    if !try!(Internals::exists(repo, name)) {
+    if !Internals::exists(repo, name)? {
         return Err(format!("Series {} does not exist.\nUse \"git series start <name>\" to start a new patch series.", name).into());
     }
 
-    let internals = try!(Internals::read_series(repo, name));
-    let new_head_id = try!(try!(internals.working.get("series")).ok_or(format!("Could not find \"series\" in \"{}\"", name))).id();
-    let new_head = try!(repo.find_commit(new_head_id)).into_object();
+    let internals = Internals::read_series(repo, name)?;
+    let new_head_id = internals.working.get("series")?.ok_or(format!("Could not find \"series\" in \"{}\"", name))?.id();
+    let new_head = repo.find_commit(new_head_id)?.into_object();
 
-    try!(checkout_tree(repo, &new_head));
+    checkout_tree(repo, &new_head)?;
 
-    let head = try!(repo.head());
-    let head_commit = try!(head.peel_to_commit());
+    let head = repo.head()?;
+    let head_commit = head.peel_to_commit()?;
     let head_id = head_commit.as_object().id();
-    println!("Previous HEAD position was {}", try!(commit_summarize(&repo, head_id)));
+    println!("Previous HEAD position was {}", commit_summarize(&repo, head_id)?);
 
     let prefixed_name = &[SERIES_PREFIX, name].concat();
-    try!(repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series checkout {}", name)));
-    try!(internals.write(repo));
+    repo.reference_symbolic(SHEAD_REF, &prefixed_name, true, &format!("git series checkout {}", name))?;
+    internals.write(repo)?;
 
     // git status parses this reflog string; the prefix must remain "checkout: moving from ".
-    try!(repo.reference("HEAD", new_head_id, true, &format!("checkout: moving from {} to {} (git series checkout {})", head_id, new_head_id, name)));
-    println!("HEAD is now detached at {}", try!(commit_summarize(&repo, new_head_id)));
+    repo.reference("HEAD", new_head_id, true, &format!("checkout: moving from {} to {} (git series checkout {})", head_id, new_head_id, name))?;
+    println!("HEAD is now detached at {}", commit_summarize(&repo, new_head_id)?);
 
     Ok(())
 }
 
 fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let mut internals = try!(Internals::read(repo));
+    let mut internals = Internals::read(repo)?;
 
-    let current_base_id = match try!(internals.working.get("base")) {
+    let current_base_id = match internals.working.get("base")? {
         Some(entry) => entry.id(),
         _ => Oid::zero(),
     };
@@ -475,11 +475,11 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
         Oid::zero()
     } else {
         let base = m.value_of("base").unwrap();
-        let base_object = try!(repo.revparse_single(base));
-        let base_commit = try!(base_object.peel(ObjectType::Commit));
+        let base_object = repo.revparse_single(base)?;
+        let base_commit = base_object.peel(ObjectType::Commit)?;
         let base_id = base_commit.id();
-        let s_working_series = try!(try!(internals.working.get("series")).ok_or("Could not find entry \"series\" in working vesion of current series"));
-        if base_id != s_working_series.id() && !try!(repo.graph_descendant_of(s_working_series.id(), base_id)) {
+        let s_working_series = internals.working.get("series")?.ok_or("Could not find entry \"series\" in working vesion of current series")?;
+        if base_id != s_working_series.id() && !repo.graph_descendant_of(s_working_series.id(), base_id)? {
             return Err(format!("Cannot set base to {}: not an ancestor of the patch series {}", base, s_working_series.id()).into());
         }
         base_id
@@ -491,17 +491,17 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
     }
 
     if !current_base_id.is_zero() {
-        println!("Previous base was {}", try!(commit_summarize(&repo, current_base_id)));
+        println!("Previous base was {}", commit_summarize(&repo, current_base_id)?);
     }
 
     if new_base_id.is_zero() {
-        try!(internals.working.remove("base"));
-        try!(internals.write(repo));
+        internals.working.remove("base")?;
+        internals.write(repo)?;
         println!("Cleared patch series base");
     } else {
-        try!(internals.working.insert("base", new_base_id, GIT_FILEMODE_COMMIT as i32));
-        try!(internals.write(repo));
-        println!("Set patch series base to {}", try!(commit_summarize(&repo, new_base_id)));
+        internals.working.insert("base", new_base_id, GIT_FILEMODE_COMMIT as i32)?;
+        internals.write(repo)?;
+        println!("Set patch series base to {}", commit_summarize(&repo, new_base_id)?);
     }
 
     Ok(())
@@ -509,7 +509,7 @@ fn base(repo: &Repository, m: &ArgMatches) -> Result<()> {
 
 fn detach(repo: &Repository) -> Result<()> {
     match repo.find_reference(SHEAD_REF) {
-        Ok(mut r) => try!(r.delete()),
+        Ok(mut r) => r.delete()?,
         Err(_) => { return Err("No current patch series to detach from.".into()); }
     }
     Ok(())
@@ -518,25 +518,25 @@ fn detach(repo: &Repository) -> Result<()> {
 fn delete(repo: &Repository, m: &ArgMatches) -> Result<()> {
     let name = m.value_of("name").unwrap();
     if let Ok(shead) = repo.find_reference(SHEAD_REF) {
-        let shead_target = try!(shead_series_name(&shead));
+        let shead_target = shead_series_name(&shead)?;
         if shead_target == name {
             return Err(format!("Cannot delete the current series \"{}\"; detach first.", name).into());
         }
     }
-    if !try!(Internals::delete(repo, name)) {
+    if Internals::delete(repo, name)? == false {
         return Err(format!("Nothing to delete: series \"{}\" does not exist.", name).into());
     }
     Ok(())
 }
 
 fn do_diff(out: &mut Output, repo: &Repository) -> Result<()> {
-    let internals = try!(Internals::read(&repo));
-    let config = try!(try!(repo.config()).snapshot());
-    try!(out.auto_pager(&config, "diff", true));
-    let diffcolors = try!(DiffColors::new(out, &config));
+    let internals = Internals::read(&repo)?;
+    let config = repo.config()?.snapshot()?;
+    out.auto_pager(&config, "diff", true)?;
+    let diffcolors = DiffColors::new(out, &config)?;
 
-    let working_tree = try!(repo.find_tree(try!(internals.working.write())));
-    let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
+    let working_tree = repo.find_tree(internals.working.write()?)?;
+    let staged_tree = repo.find_tree(internals.staged.write()?)?;
 
     write_series_diff(out, repo, &diffcolors, Some(&staged_tree), Some(&working_tree))
 }
@@ -620,8 +620,8 @@ fn cmd_maybe_shell<S: AsRef<OsStr>>(program: S, args: bool) -> Command {
 }
 
 fn run_editor<S: AsRef<OsStr>>(config: &Config, filename: S) -> Result<()> {
-    let editor = try!(get_editor(&config));
-    let editor_status = try!(cmd_maybe_shell(editor, true).arg(&filename).status());
+    let editor = get_editor(&config)?;
+    let editor_status = cmd_maybe_shell(editor, true).arg(&filename).status()?;
     if !editor_status.success() {
         return Err(format!("Editor exited with status {}", editor_status).into());
     }
@@ -648,7 +648,7 @@ impl Output {
             if env::var_os("LV").is_none() {
                 cmd.env("LV", "-c");
             }
-            let child = try!(cmd.spawn());
+            let child = cmd.spawn()?;
             self.pager = Some(child);
             self.include_stderr = atty::is(atty::Stream::Stderr);
         }
@@ -665,13 +665,13 @@ impl Output {
         if !cfg!(unix) {
             return Ok(Style::new());
         }
-        let color_ui = try!(notfound_to_none(config.get_str("color.ui"))).unwrap_or("auto");
-        let color_cmd = try!(notfound_to_none(config.get_str(&format!("color.{}", command)))).unwrap_or(color_ui);
+        let color_ui = notfound_to_none(config.get_str("color.ui"))?.unwrap_or("auto");
+        let color_cmd = notfound_to_none(config.get_str(&format!("color.{}", command)))?.unwrap_or(color_ui);
         if color_cmd == "never" || Config::parse_bool(color_cmd) == Ok(false) {
             return Ok(Style::new());
         }
         if self.pager.is_some() {
-            let color_pager = try!(notfound_to_none(config.get_bool(&format!("color.pager")))).unwrap_or(true);
+            let color_pager = notfound_to_none(config.get_bool(&format!("color.pager")))?.unwrap_or(true);
             if !color_pager {
                 return Ok(Style::new());
             }
@@ -679,7 +679,7 @@ impl Output {
             return Ok(Style::new());
         }
         let cfg = format!("color.{}.{}", command, slot);
-        let color = try!(notfound_to_none(config.get_str(&cfg))).unwrap_or(default);
+        let color = notfound_to_none(config.get_str(&cfg))?.unwrap_or(default);
         colorparse::parse(color).map_err(|e| format!("Error parsing {}: {}", cfg, e).into())
    }
 
@@ -725,26 +725,26 @@ fn get_signature(config: &Config, which: &str) -> Result<git2::Signature<'static
     let name_var = ["GIT_", which, "_NAME"].concat();
     let email_var = ["GIT_", which, "_EMAIL"].concat();
     let which_lc = which.to_lowercase();
-    let name = try!(env::var(&name_var).or_else(
+    let name = env::var(&name_var).or_else(
             |_| config.get_string("user.name").or_else(
-                |_| Err(format!("Could not determine {} name: checked ${} and user.name in git config", which_lc, name_var)))));
-    let email = try!(env::var(&email_var).or_else(
+                |_| Err(format!("Could not determine {} name: checked ${} and user.name in git config", which_lc, name_var))))?;
+    let email = env::var(&email_var).or_else(
             |_| config.get_string("user.email").or_else(
                 |_| env::var("EMAIL").or_else(
-                    |_| Err(format!("Could not determine {} email: checked ${}, user.email in git config, and $EMAIL", which_lc, email_var))))));
-    Ok(try!(git2::Signature::now(&name, &email)))
+                    |_| Err(format!("Could not determine {} email: checked ${}, user.email in git config, and $EMAIL", which_lc, email_var)))))?;
+    Ok(git2::Signature::now(&name, &email)?)
 }
 
 fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<()> {
-    let config = try!(try!(repo.config()).snapshot());
+    let config = repo.config()?.snapshot()?;
     let shead = match repo.find_reference(SHEAD_REF) {
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => { println!("No series; use \"git series start <name>\" to start"); return Ok(()); }
-        result => try!(result),
+        result => result?,
     };
-    let series_name = try!(shead_series_name(&shead));
+    let series_name = shead_series_name(&shead)?;
 
     if do_status {
-        try!(out.auto_pager(&config, "status", false));
+        out.auto_pager(&config, "status", false)?;
     }
     let get_color = |out: &Output, color: &str, default: &str| {
         if do_status {
@@ -754,14 +754,14 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
         }
     };
     let color_normal = Style::new();
-    let color_header = try!(get_color(out, "header", "normal"));
-    let color_updated = try!(get_color(out, "updated", "green"));
-    let color_changed = try!(get_color(out, "changed", "red"));
+    let color_header = get_color(out, "header", "normal")?;
+    let color_updated = get_color(out, "updated", "green")?;
+    let color_changed = get_color(out, "changed", "red")?;
 
     let write_status = |status: &mut Vec<ansi_term::ANSIString>, diff: &Diff, heading: &str, color: &Style, show_hints: bool, hints: &[&str]| -> Result<bool> {
         let mut changes = false;
 
-        try!(diff.foreach(&mut |delta, _| {
+        diff.foreach(&mut |delta, _| {
             if !changes {
                 changes = true;
                 status.push(color_header.paint(format!("{}\n", heading.to_string())));
@@ -775,7 +775,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             status.push(color_normal.paint("        "));
             status.push(color.paint(format!("{:?}:   {}\n", delta.status(), delta.old_file().path().unwrap().to_str().unwrap())));
             true
-        }, None, None, None));
+        }, None, None, None)?;
 
         if changes {
             status.push(color_normal.paint("\n"));
@@ -787,43 +787,43 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let mut status = Vec::new();
     status.push(color_header.paint(format!("On series {}\n", series_name)));
 
-    let mut internals = try!(Internals::read(repo));
-    let working_tree = try!(repo.find_tree(try!(internals.working.write())));
-    let staged_tree = try!(repo.find_tree(try!(internals.staged.write())));
+    let mut internals = Internals::read(repo)?;
+    let working_tree = repo.find_tree(internals.working.write()?)?;
+    let staged_tree = repo.find_tree(internals.staged.write()?)?;
 
     let shead_commit = match shead.resolve() {
-        Ok(r) => Some(try!(r.peel_to_commit())),
+        Ok(r) => Some(r.peel_to_commit()?),
         Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
             status.push(color_header.paint("\nInitial series commit\n"));
             None
         }
-        Err(e) => try!(Err(e)),
+        Err(e) => Err(e)?,
     };
     let shead_tree = match shead_commit {
-        Some(ref c) => Some(try!(c.tree())),
+        Some(ref c) => Some(c.tree()?),
         None => None,
     };
 
     let commit_all = m.is_present("all");
 
     let (changes, tree) = if commit_all {
-        let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&working_tree), None));
-        let changes = try!(write_status(&mut status, &diff, "Changes to be committed:", &color_normal, false, &[]));
+        let diff = repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&working_tree), None)?;
+        let changes = write_status(&mut status, &diff, "Changes to be committed:", &color_normal, false, &[])?;
         if !changes {
             status.push(color_normal.paint("nothing to commit; series unchanged\n"));
         }
         (changes, working_tree)
     } else {
-        let diff = try!(repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&staged_tree), None));
-        let changes_to_be_committed = try!(write_status(&mut status, &diff,
+        let diff = repo.diff_tree_to_tree(shead_tree.as_ref(), Some(&staged_tree), None)?;
+        let changes_to_be_committed = write_status(&mut status, &diff,
                 "Changes to be committed:", &color_updated, do_status,
                 &["use \"git series commit\" to commit",
-                  "use \"git series unadd <file>...\" to undo add"]));
+                  "use \"git series unadd <file>...\" to undo add"])?;
 
-        let diff_not_staged = try!(repo.diff_tree_to_tree(Some(&staged_tree), Some(&working_tree), None));
-        let changes_not_staged = try!(write_status(&mut status, &diff_not_staged,
+        let diff_not_staged = repo.diff_tree_to_tree(Some(&staged_tree), Some(&working_tree), None)?;
+        let changes_not_staged = write_status(&mut status, &diff_not_staged,
                 "Changes not staged for commit:", &color_changed, do_status,
-                &["use \"git series add <file>...\" to update what will be committed"]));
+                &["use \"git series add <file>...\" to update what will be committed"])?;
 
         if !changes_to_be_committed {
             if changes_not_staged {
@@ -839,7 +839,7 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let status = ansi_term::ANSIStrings(&status).to_string();
     if do_status || !changes {
         if do_status {
-            try!(write!(out, "{}", status));
+            write!(out, "{}", status)?;
         } else {
             return Err(status.into());
         }
@@ -855,9 +855,9 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
 
     // Check that the base is still an ancestor of the series
     if let Some(base) = tree.get_name("base") {
-        if base.id() != series_id && !try!(repo.graph_descendant_of(series_id, base.id())) {
-            let (base_short_id, base_summary) = try!(commit_summarize_components(&repo, base.id()));
-            let (series_short_id, series_summary) = try!(commit_summarize_components(&repo, series_id));
+        if base.id() != series_id && !repo.graph_descendant_of(series_id, base.id())? {
+            let (base_short_id, base_summary) = commit_summarize_components(&repo, base.id())?;
+            let (series_short_id, series_summary) = commit_summarize_components(&repo, series_id)?;
             return Err(format!(concat!(
                        "Cannot commit: base {} is not an ancestor of patch series {}\n",
                        "base   {} {}\n",
@@ -872,36 +872,36 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
         Some(s) => s.to_string(),
         None => {
             let filename = repo.path().join("SCOMMIT_EDITMSG");
-            let mut file = try!(File::create(&filename));
-            try!(write!(file, "{}", COMMIT_MESSAGE_COMMENT));
+            let mut file = File::create(&filename)?;
+            write!(file, "{}", COMMIT_MESSAGE_COMMENT)?;
             for line in status.lines() {
                 if line.is_empty() {
-                    try!(writeln!(file, "#"));
+                    writeln!(file, "#")?;
                 } else {
-                    try!(writeln!(file, "# {}", line));
+                    writeln!(file, "# {}", line)?;
                 }
             }
             if m.is_present("verbose") {
-                try!(writeln!(file, "{}\n{}", SCISSOR_LINE, SCISSOR_COMMENT));
-                try!(write_series_diff(&mut file, repo, &DiffColors::plain(), shead_tree.as_ref(), Some(&tree)));
+                writeln!(file, "{}\n{}", SCISSOR_LINE, SCISSOR_COMMENT)?;
+                write_series_diff(&mut file, repo, &DiffColors::plain(), shead_tree.as_ref(), Some(&tree))?;
             }
             drop(file);
-            try!(run_editor(&config, &filename));
-            let mut file = try!(File::open(&filename));
+            run_editor(&config, &filename)?;
+            let mut file = File::open(&filename)?;
             let mut msg = String::new();
-            try!(file.read_to_string(&mut msg));
+            file.read_to_string(&mut msg)?;
             if let Some(scissor_index) = msg.find(SCISSOR_LINE) {
                 msg.truncate(scissor_index);
             }
-            try!(git2::message_prettify(msg, git2::DEFAULT_COMMENT_CHAR))
+            git2::message_prettify(msg, git2::DEFAULT_COMMENT_CHAR)?
         }
     };
     if msg.is_empty() {
         return Err("Aborting series commit due to empty commit message.".into());
     }
 
-    let author = try!(get_signature(&config, "AUTHOR"));
-    let committer = try!(get_signature(&config, "COMMITTER"));
+    let author = get_signature(&config, "AUTHOR")?;
+    let committer = get_signature(&config, "COMMITTER")?;
     let mut parents: Vec<Oid> = Vec::new();
     // Include all commits from tree, to keep them reachable and fetchable.
     for e in tree.iter() {
@@ -909,63 +909,63 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
             parents.push(e.id())
         }
     }
-    let parents = try!(parents_from_ids(repo, parents));
+    let parents = parents_from_ids(repo, parents)?;
     let parents_ref: Vec<&_> = shead_commit.iter().chain(parents.iter()).collect();
-    let new_commit_oid = try!(repo.commit(Some(SHEAD_REF), &author, &committer, &msg, &tree, &parents_ref));
+    let new_commit_oid = repo.commit(Some(SHEAD_REF), &author, &committer, &msg, &tree, &parents_ref)?;
 
     if commit_all {
-        internals.staged = try!(repo.treebuilder(Some(&tree)));
-        try!(internals.write(repo));
+        internals.staged = repo.treebuilder(Some(&tree))?;
+        internals.write(repo)?;
     }
 
-    let (new_commit_short_id, new_commit_summary) = try!(commit_summarize_components(&repo, new_commit_oid));
-    try!(writeln!(out, "[{} {}] {}", series_name, new_commit_short_id, new_commit_summary));
+    let (new_commit_short_id, new_commit_summary) = commit_summarize_components(&repo, new_commit_oid)?;
+    writeln!(out, "[{} {}] {}", series_name, new_commit_short_id, new_commit_summary)?;
 
     Ok(())
 }
 
 fn cover(repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let mut internals = try!(Internals::read(repo));
+    let mut internals = Internals::read(repo)?;
 
-    let (working_cover_id, working_cover_content) = match try!(internals.working.get("cover")) {
+    let (working_cover_id, working_cover_content) = match internals.working.get("cover")? {
         None => (Oid::zero(), String::new()),
-        Some(entry) => (entry.id(), try!(std::str::from_utf8(try!(repo.find_blob(entry.id())).content())).to_string()),
+        Some(entry) => (entry.id(), std::str::from_utf8(repo.find_blob(entry.id())?.content())?.to_string()),
     };
 
     if m.is_present("delete") {
         if working_cover_id.is_zero() {
             return Err("No cover to delete".into());
         }
-        try!(internals.working.remove("cover"));
-        try!(internals.write(repo));
+        internals.working.remove("cover")?;
+        internals.write(repo)?;
         println!("Deleted cover letter");
         return Ok(());
     }
 
     let filename = repo.path().join("COVER_EDITMSG");
-    let mut file = try!(File::create(&filename));
+    let mut file = File::create(&filename)?;
     if working_cover_content.is_empty() {
-        try!(write!(file, "{}", COVER_LETTER_COMMENT));
+        write!(file, "{}", COVER_LETTER_COMMENT)?;
     } else {
-        try!(write!(file, "{}", working_cover_content));
+        write!(file, "{}", working_cover_content)?;
     }
     drop(file);
-    let config = try!(repo.config());
-    try!(run_editor(&config, &filename));
-    let mut file = try!(File::open(&filename));
+    let config = repo.config()?;
+    run_editor(&config, &filename)?;
+    let mut file = File::open(&filename)?;
     let mut msg = String::new();
-    try!(file.read_to_string(&mut msg));
-    let msg = try!(git2::message_prettify(msg, git2::DEFAULT_COMMENT_CHAR));
+    file.read_to_string(&mut msg)?;
+    let msg = git2::message_prettify(msg, git2::DEFAULT_COMMENT_CHAR)?;
     if msg.is_empty() {
         return Err("Empty cover letter; not changing.\n(To delete the cover letter, use \"git series cover -d\".)".into());
     }
 
-    let new_cover_id = try!(repo.blob(msg.as_bytes()));
+    let new_cover_id = repo.blob(msg.as_bytes())?;
     if new_cover_id == working_cover_id {
         println!("Cover letter unchanged");
     } else {
-        try!(internals.working.insert("cover", new_cover_id, GIT_FILEMODE_BLOB as i32));
-        try!(internals.write(repo));
+        internals.working.insert("cover", new_cover_id, GIT_FILEMODE_BLOB as i32)?;
+        internals.write(repo)?;
         println!("Updated cover letter");
     }
 
@@ -973,8 +973,8 @@ fn cover(repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn cp_mv(repo: &Repository, m: &ArgMatches, mv: bool) -> Result<()> {
-    let shead_target = if let Some(shead) = try!(notfound_to_none(repo.find_reference(SHEAD_REF))) {
-        Some(try!(shead_series_name(&shead)))
+    let shead_target = if let Some(shead) = notfound_to_none(repo.find_reference(SHEAD_REF))? {
+        Some(shead_series_name(&shead)?)
     } else {
         None
     };
@@ -982,22 +982,22 @@ fn cp_mv(repo: &Repository, m: &ArgMatches, mv: bool) -> Result<()> {
     let dest = source_dest.next_back().unwrap();
     let (update_shead, source) = match source_dest.next_back().map(String::from) {
         Some(name) => (shead_target.as_ref() == Some(&name), name),
-        None => (true, try!(shead_target.ok_or("No current series"))),
+        None => (true, shead_target.ok_or("No current series")?),
     };
 
-    if try!(Internals::exists(&repo, dest)) {
+    if Internals::exists(&repo, dest)? {
         return Err(format!("The destination series \"{}\" already exists", dest).into());
     }
-    if !try!(Internals::copy(&repo, &source, &dest)) {
+    if !Internals::copy(&repo, &source, &dest)? {
         return Err(format!("The source series \"{}\" does not exist", source).into());
     }
 
     if mv {
         if update_shead {
             let prefixed_dest = &[SERIES_PREFIX, dest].concat();
-            try!(repo.reference_symbolic(SHEAD_REF, &prefixed_dest, true, &format!("git series mv {} {}", source, dest)));
+            repo.reference_symbolic(SHEAD_REF, &prefixed_dest, true, &format!("git series mv {} {}", source, dest))?;
         }
-        try!(Internals::delete(&repo, &source));
+        Internals::delete(&repo, &source)?;
     }
 
     Ok(())
@@ -1119,14 +1119,14 @@ impl DiffColors {
     }
 
     fn new(out: &Output, config: &Config) -> Result<Self> {
-        let old = try!(out.get_color(&config, "diff", "old", "red"));
-        let new = try!(out.get_color(&config, "diff", "new", "green"));
+        let old = out.get_color(&config, "diff", "old", "red")?;
+        let new = out.get_color(&config, "diff", "new", "green")?;
         Ok(DiffColors {
-            commit: try!(out.get_color(&config, "diff", "commit", "yellow")),
-            meta: try!(out.get_color(&config, "diff", "meta", "bold")),
-            frag: try!(out.get_color(&config, "diff", "frag", "cyan")),
-            func: try!(out.get_color(&config, "diff", "func", "normal")),
-            context: try!(out.get_color(&config, "diff", "context", "normal")),
+            commit: out.get_color(&config, "diff", "commit", "yellow")?,
+            meta: out.get_color(&config, "diff", "meta", "bold")?,
+            frag: out.get_color(&config, "diff", "frag", "cyan")?,
+            func: out.get_color(&config, "diff", "func", "normal")?,
+            context: out.get_color(&config, "diff", "context", "normal")?,
             old: old,
             new: new,
             series_old: old.reverse(),
@@ -1136,8 +1136,8 @@ impl DiffColors {
 }
 
 fn diffstat(diff: &Diff) -> Result<String> {
-    let stats = try!(diff.stats());
-    let stats_buf = try!(stats.to_buf(git2::DiffStatsFormat::FULL|git2::DiffStatsFormat::INCLUDE_SUMMARY, 72));
+    let stats = diff.stats()?;
+    let stats_buf = stats.to_buf(git2::DiffStatsFormat::FULL|git2::DiffStatsFormat::INCLUDE_SUMMARY, 72)?;
     Ok(stats_buf.as_str().unwrap().to_string())
 }
 
@@ -1145,7 +1145,7 @@ fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff, simplify:
     let mut err = Ok(());
     let mut lines = 0;
     let normal = Style::new();
-    try!(diff.print(git2::DiffFormat::Patch, |_, _, l| {
+    diff.print(git2::DiffFormat::Patch, |_, _, l| {
         err = || -> Result<()> {
             let o = l.origin();
             let style = match o {
@@ -1204,33 +1204,33 @@ fn write_diff<W: IoWrite>(f: &mut W, colors: &DiffColors, diff: &Diff, simplify:
                     }
                 }
             }
-            try!(ansi_term::ANSIByteStrings(&v).write_to(f));
+            ansi_term::ANSIByteStrings(&v).write_to(f)?;
             Ok(())
         }();
         err.is_ok()
-    }));
-    try!(err);
+    })?;
+    err?;
     Ok(lines)
 }
 
 fn get_commits(repo: &Repository, base: Oid, series: Oid) -> Result<Vec<Commit>> {
-    let mut revwalk = try!(repo.revwalk());
+    let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
-    try!(revwalk.push(series));
-    try!(revwalk.hide(base));
+    revwalk.push(series)?;
+    revwalk.hide(base)?;
     revwalk.map(|c| {
-        let id = try!(c);
-        let commit = try!(repo.find_commit(id));
+        let id = c?;
+        let commit = repo.find_commit(id)?;
         Ok(commit)
     }).collect()
 }
 
 fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, (base1, series1): (Oid, Oid), (base2, series2): (Oid, Oid)) -> Result<()> {
-    let mut commits1 = try!(get_commits(repo, base1, series1));
-    let mut commits2 = try!(get_commits(repo, base2, series2));
+    let mut commits1 = get_commits(repo, base1, series1)?;
+    let mut commits2 = get_commits(repo, base2, series2)?;
     for commit in commits1.iter().chain(commits2.iter()) {
         if commit.parent_ids().count() > 1 {
-            try!(writeln!(out, "(Diffs of series with merge commits ({}) not yet supported)", commit.id()));
+            writeln!(out, "(Diffs of series with merge commits ({}) not yet supported)", commit.id())?;
             return Ok(());
         }
     }
@@ -1244,28 +1244,28 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
         return Ok(());
     }
     let commit_text = &|commit: &Commit| {
-        let parent = try!(commit.parent(0));
+        let parent = commit.parent(0)?;
         let author = commit.author();
-        let diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
+        let diff = repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None)?;
         let mut v = Vec::new();
-        try!(v.write_all(b"From: "));
-        try!(v.write_all(author.name_bytes()));
-        try!(v.write_all(b" <"));
-        try!(v.write_all(author.email_bytes()));
-        try!(v.write_all(b">\n\n"));
-        try!(v.write_all(commit.message_bytes()));
-        try!(v.write_all(b"\n"));
-        let lines = try!(write_diff(&mut v, colors, &diff, true));
+        v.write_all(b"From: ")?;
+        v.write_all(author.name_bytes())?;
+        v.write_all(b" <")?;
+        v.write_all(author.email_bytes())?;
+        v.write_all(b">\n\n")?;
+        v.write_all(commit.message_bytes())?;
+        v.write_all(b"\n")?;
+        let lines = write_diff(&mut v, colors, &diff, true)?;
         Ok((v, lines))
     };
-    let texts1: Vec<_> = try!(commits1.iter().map(commit_text).collect::<Result<_>>());
-    let texts2: Vec<_> = try!(commits2.iter().map(commit_text).collect::<Result<_>>());
+    let texts1: Vec<_> = commits1.iter().map(commit_text).collect::<Result<_>>()?;
+    let texts2: Vec<_> = commits2.iter().map(commit_text).collect::<Result<_>>()?;
 
     let mut weights = Vec::with_capacity(n*n);
     for i1 in 0..ncommits1 {
         for i2 in 0..ncommits2 {
-            let patch = try!(git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None));
-            let (_, additions, deletions) = try!(patch.line_stats());
+            let patch = git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None)?;
+            let (_, additions, deletions) = patch.line_stats()?;
             weights.push(additions+deletions);
         }
         let w = texts1[i1].1 / 2;
@@ -1282,7 +1282,7 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
         }
     }
     let mut weight_matrix = munkres::WeightMatrix::from_row_vec(n, weights);
-    let result = try!(munkres::solve_assignment(&mut weight_matrix));
+    let result = munkres::solve_assignment(&mut weight_matrix)?;
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     enum CommitState { Unhandled, Handled, Deleted };
@@ -1334,8 +1334,8 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
 
     let offset = ncommon + 1;
     let nwidth = max(ncommits1 + offset, ncommits2 + offset).to_string().len();
-    let commits1_summaries: Vec<_> = try!(commits1.iter_mut().map(commit_obj_summarize_components).collect());
-    let commits2_summaries: Vec<_> = try!(commits2.iter_mut().map(commit_obj_summarize_components).collect());
+    let commits1_summaries: Vec<_> = commits1.iter_mut().map(commit_obj_summarize_components).collect::<Result<_>>()?;
+    let commits2_summaries: Vec<_> = commits2.iter_mut().map(commit_obj_summarize_components).collect::<Result<_>>()?;
     let idwidth = commits1_summaries.iter().chain(commits2_summaries.iter()).map(|&(ref short_id, _)| short_id.len()).max().unwrap();
     for commit_pair in commit_pairs {
         match commit_pair {
@@ -1353,7 +1353,7 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
                 nl(&mut v);
             }
             (Some(i1), Some(i2)) => {
-                let mut patch = try!(git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None));
+                let mut patch = git2::Patch::from_buffers(&texts1[i1].0, None, &texts2[i2].0, None, None)?;
                 let (old, ch, new) = if let Delta::Unmodified = patch.delta().status() {
                     (colors.commit, '=', colors.commit)
                 } else {
@@ -1366,7 +1366,7 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
                 v.push(new.paint(format!("{:nwidth$}: {:idwidth$}", i2 + offset, c2_short_id, nwidth=nwidth, idwidth=idwidth).as_bytes().to_owned()));
                 v.push(colors.commit.paint(format!(" {}", c2_summary).as_bytes().to_owned()));
                 nl(&mut v);
-                try!(patch.print(&mut |_, _, l| {
+                patch.print(&mut |_, _, l| {
                     let o = l.origin();
                     let style = match o {
                         '-'|'<' => old,
@@ -1381,18 +1381,18 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
                         v.push(style.paint(l.content().to_owned()));
                     }
                     true
-                }));
+                })?;
             }
         }
     }
 
-    try!(ansi_term::ANSIByteStrings(&v).write_to(out));
+    ansi_term::ANSIByteStrings(&v).write_to(out)?;
     Ok(())
 }
 
 fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffColors, tree1: Option<&Tree>, tree2: Option<&Tree>) -> Result<()> {
-    let diff = try!(repo.diff_tree_to_tree(tree1, tree2, None));
-    try!(write_diff(out, colors, &diff, false));
+    let diff = repo.diff_tree_to_tree(tree1, tree2, None)?;
+    write_diff(out, colors, &diff, false)?;
 
     let base1 = tree1.and_then(|t| t.get_name("base"));
     let series1 = tree1.and_then(|t| t.get_name("series"));
@@ -1400,9 +1400,9 @@ fn write_series_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &DiffCo
     let series2 = tree2.and_then(|t| t.get_name("series"));
 
     if let (Some(base1), Some(series1), Some(base2), Some(series2)) = (base1, series1, base2, series2) {
-        try!(write_commit_range_diff(out, repo, colors, (base1.id(), series1.id()), (base2.id(), series2.id())));
+        write_commit_range_diff(out, repo, colors, (base1.id(), series1.id()), (base2.id(), series2.id()))?;
     } else {
-        try!(writeln!(out, "Can't diff series: both versions must have base and series to diff"));
+        writeln!(out, "Can't diff series: both versions must have base and series to diff")?;
     }
 
     Ok(())
@@ -1429,33 +1429,33 @@ fn ensure_nl(s: &str) -> &'static str {
 }
 
 fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(try!(repo.config()).snapshot());
+    let config = repo.config()?.snapshot()?;
     let to_stdout = m.is_present("stdout");
     let no_from = m.is_present("no-from");
 
-    let shead_commit = try!(try!(try!(repo.find_reference(SHEAD_REF)).resolve()).peel_to_commit());
-    let stree = try!(shead_commit.tree());
+    let shead_commit = repo.find_reference(SHEAD_REF)?.resolve()?.peel_to_commit()?;
+    let stree = shead_commit.tree()?;
 
-    let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
-    let base = try!(stree.get_name("base").ok_or("Cannot format series; no base set.\nUse \"git series base\" to set base."));
+    let series = stree.get_name("series").ok_or("Internal error: series did not contain \"series\"")?;
+    let base = stree.get_name("base").ok_or("Cannot format series; no base set.\nUse \"git series base\" to set base.")?;
 
-    let mut revwalk = try!(repo.revwalk());
+    let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
-    try!(revwalk.push(series.id()));
-    try!(revwalk.hide(base.id()));
-    let mut commits: Vec<Commit> = try!(revwalk.map(|c| {
-        let id = try!(c);
-        let commit = try!(repo.find_commit(id));
+    revwalk.push(series.id())?;
+    revwalk.hide(base.id())?;
+    let mut commits: Vec<Commit> = revwalk.map(|c| {
+        let id = c?;
+        let commit = repo.find_commit(id)?;
         if commit.parent_ids().count() > 1 {
-            return Err(format!("Error: cannot format merge commit as patch:\n{}", try!(commit_summarize(repo, id))).into());
+            return Err(format!("Error: cannot format merge commit as patch:\n{}", commit_summarize(repo, id)?).into());
         }
         Ok(commit)
-    }).collect::<Result<_>>());
+    }).collect::<Result<_>>()?;
     if commits.is_empty() {
         return Err("No patches to format; series and base identical.".into());
     }
 
-    let committer = try!(get_signature(&config, "COMMITTER"));
+    let committer = get_signature(&config, "COMMITTER")?;
     let committer_name = committer.name().unwrap();
     let committer_email = committer.email().unwrap();
     let message_id_suffix = format!("{}.git-series.{}", committer.when().seconds(), committer_email);
@@ -1484,10 +1484,10 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let signature = mail_signature();
 
     if to_stdout {
-        try!(out.auto_pager(&config, "format-patch", true));
+        out.auto_pager(&config, "format-patch", true)?;
     }
     let diffcolors = if to_stdout {
-        try!(DiffColors::new(out, &config))
+        DiffColors::new(out, &config)?
     } else {
         DiffColors::plain()
     };
@@ -1499,46 +1499,46 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let patch_file = |name: &str| -> Result<Box<dyn IoWrite>> {
         let name = format!("{}{}", file_prefix, name);
         println!("{}", name);
-        Ok(Box::new(try!(File::create(name))))
+        Ok(Box::new(File::create(name)?))
     };
 
     if let Some(ref entry) = cover_entry {
-        let cover_blob = try!(repo.find_blob(entry.id()));
-        let content = try!(std::str::from_utf8(cover_blob.content())).to_string();
+        let cover_blob = repo.find_blob(entry.id())?;
+        let content = std::str::from_utf8(cover_blob.content())?.to_string();
         let (subject, body) = split_message(&content);
 
-        let series_tree = try!(repo.find_commit(series.id())).tree().unwrap();
-        let base_tree = try!(repo.find_commit(base.id())).tree().unwrap();
-        let diff = try!(repo.diff_tree_to_tree(Some(&base_tree), Some(&series_tree), None));
-        let stats = try!(diffstat(&diff));
+        let series_tree = repo.find_commit(series.id())?.tree().unwrap();
+        let base_tree = repo.find_commit(base.id())?.tree().unwrap();
+        let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&series_tree), None)?;
+        let stats = diffstat(&diff)?;
 
         if !to_stdout {
-            out = try!(patch_file("0000-cover-letter.patch"));
+            out = patch_file("0000-cover-letter.patch")?;
         }
-        try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
+        writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id())?;
         let cover_message_id = format!("<cover.{}.{}>", shead_commit.id(), message_id_suffix);
-        try!(writeln!(out, "Message-Id: {}", cover_message_id));
+        writeln!(out, "Message-Id: {}", cover_message_id)?;
         if let Some(ref message_id) = in_reply_to_message_id {
-            try!(writeln!(out, "In-Reply-To: {}", message_id));
-            try!(writeln!(out, "References: {}", message_id));
+            writeln!(out, "In-Reply-To: {}", message_id)?;
+            writeln!(out, "References: {}", message_id)?;
         }
         in_reply_to_message_id = Some(cover_message_id);
-        try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
-        try!(writeln!(out, "Date: {}", date_822(committer.when())));
-        try!(writeln!(out, "Subject: [{}{}{:0>num_width$}/{}] {}\n", subject_patch, ensure_space(&subject_patch), 0, commits.len(), subject, num_width=num_width));
+        writeln!(out, "From: {} <{}>", committer_name, committer_email)?;
+        writeln!(out, "Date: {}", date_822(committer.when()))?;
+        writeln!(out, "Subject: [{}{}{:0>num_width$}/{}] {}\n", subject_patch, ensure_space(&subject_patch), 0, commits.len(), subject, num_width = num_width)?;
         if !body.is_empty() {
-            try!(writeln!(out, "{}", body));
+            writeln!(out, "{}", body)?;
         }
-        try!(writeln!(out, "{}", shortlog(&mut commits)));
-        try!(writeln!(out, "{}", stats));
-        try!(writeln!(out, "base-commit: {}", base.id()));
-        try!(writeln!(out, "{}", signature));
+        writeln!(out, "{}", shortlog(&mut commits))?;
+        writeln!(out, "{}", stats)?;
+        writeln!(out, "base-commit: {}", base.id())?;
+        writeln!(out, "{}", signature)?;
     }
 
     for (commit_num, commit) in commits.iter().enumerate() {
         let first_mail = commit_num == 0 && cover_entry.is_none();
         if to_stdout && !first_mail {
-            try!(writeln!(out, ""));
+            writeln!(out, "")?;
         }
 
         let message = commit.message().unwrap();
@@ -1549,28 +1549,28 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let commit_author_email = commit_author.email().unwrap();
         let summary_sanitized = sanitize_summary(&subject);
         let this_message_id = format!("<{}.{}>", commit_id, message_id_suffix);
-        let parent = try!(commit.parent(0));
-        let diff = try!(repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None));
-        let stats = try!(diffstat(&diff));
+        let parent = commit.parent(0)?;
+        let diff = repo.diff_tree_to_tree(Some(&parent.tree().unwrap()), Some(&commit.tree().unwrap()), None)?;
+        let stats = diffstat(&diff)?;
 
         if !to_stdout {
-            out = try!(patch_file(&format!("{:04}-{}.patch", commit_num+1, summary_sanitized)));
+            out = patch_file(&format!("{:04}-{}.patch", commit_num + 1, summary_sanitized))?;
         }
-        try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", commit_id));
-        try!(writeln!(out, "Message-Id: {}", this_message_id));
+        writeln!(out, "From {} Mon Sep 17 00:00:00 2001", commit_id)?;
+        writeln!(out, "Message-Id: {}", this_message_id)?;
         if let Some(ref message_id) = in_reply_to_message_id {
-            try!(writeln!(out, "In-Reply-To: {}", message_id));
-            try!(writeln!(out, "References: {}", message_id));
+            writeln!(out, "In-Reply-To: {}", message_id)?;
+            writeln!(out, "References: {}", message_id)?;
         }
         if first_mail {
             in_reply_to_message_id = Some(this_message_id);
         }
         if no_from {
-            try!(writeln!(out, "From: {} <{}>", commit_author_name, commit_author_email));
+            writeln!(out, "From: {} <{}>", commit_author_name, commit_author_email)?;
         } else {
-            try!(writeln!(out, "From: {} <{}>", committer_name, committer_email));
+            writeln!(out, "From: {} <{}>", committer_name, committer_email)?;
         }
-        try!(writeln!(out, "Date: {}", date_822(commit_author.when())));
+        writeln!(out, "Date: {}", date_822(commit_author.when()))?;
         let prefix = if commits.len() == 1 && cover_entry.is_none() {
             if subject_patch.is_empty() {
                 "".to_string()
@@ -1580,38 +1580,38 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         } else {
             format!("[{}{}{:0>num_width$}/{}] ", subject_patch, ensure_space(&subject_patch), commit_num+1, commits.len(), num_width=num_width)
         };
-        try!(writeln!(out, "Subject: {}{}\n", prefix, subject));
+        writeln!(out, "Subject: {}{}\n", prefix, subject)?;
 
         if !no_from && (commit_author_name != committer_name || commit_author_email != committer_email) {
-            try!(writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email));
+            writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email)?;
         }
         if !body.is_empty() {
-            try!(write!(out, "{}{}", body, ensure_nl(&body)));
+            write!(out, "{}{}", body, ensure_nl(&body))?;
         }
-        try!(writeln!(out, "---"));
-        try!(writeln!(out, "{}", stats));
-        try!(write_diff(&mut out, &diffcolors, &diff, false));
+        writeln!(out, "---")?;
+        writeln!(out, "{}", stats)?;
+        write_diff(&mut out, &diffcolors, &diff, false)?;
         if first_mail {
-            try!(writeln!(out, "\nbase-commit: {}", base.id()));
+            writeln!(out, "\nbase-commit: {}", base.id())?;
         }
-        try!(writeln!(out, "{}", signature));
+        writeln!(out, "{}", signature)?;
     }
 
     Ok(())
 }
 
 fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(try!(repo.config()).snapshot());
-    try!(out.auto_pager(&config, "log", true));
-    let diffcolors = try!(DiffColors::new(out, &config));
+    let config = repo.config()?.snapshot()?;
+    out.auto_pager(&config, "log", true)?;
+    let diffcolors = DiffColors::new(out, &config)?;
 
-    let shead_id = try!(repo.refname_to_id(SHEAD_REF));
+    let shead_id = repo.refname_to_id(SHEAD_REF)?;
     let mut hidden_ids = std::collections::HashSet::new();
     let mut commit_stack = Vec::new();
     commit_stack.push(shead_id);
     while let Some(oid) = commit_stack.pop() {
-        let commit = try!(repo.find_commit(oid));
-        let tree = try!(commit.tree());
+        let commit = repo.find_commit(oid)?;
+        let tree = commit.tree()?;
         for parent_id in commit.parent_ids() {
             if tree.get_id(parent_id).is_some() {
                 hidden_ids.insert(parent_id);
@@ -1621,11 +1621,11 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         }
     }
 
-    let mut revwalk = try!(repo.revwalk());
+    let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL);
-    try!(revwalk.push(shead_id));
+    revwalk.push(shead_id)?;
     for id in hidden_ids {
-        try!(revwalk.hide(id));
+        revwalk.hide(id)?;
     }
 
     let show_diff = m.is_present("patch");
@@ -1635,33 +1635,33 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         if first {
             first = false;
         } else {
-            try!(writeln!(out, ""));
+            writeln!(out, "")?;
         }
-        let oid = try!(oid);
-        let commit = try!(repo.find_commit(oid));
+        let oid = oid?;
+        let commit = repo.find_commit(oid)?;
         let author = commit.author();
 
-        try!(writeln!(out, "{}", diffcolors.commit.paint(format!("commit {}", oid))));
-        try!(writeln!(out, "Author: {} <{}>", author.name().unwrap(), author.email().unwrap()));
-        try!(writeln!(out, "Date:   {}\n", date_822(author.when())));
+        writeln!(out, "{}", diffcolors.commit.paint(format!("commit {}", oid)))?;
+        writeln!(out, "Author: {} <{}>", author.name().unwrap(), author.email().unwrap())?;
+        writeln!(out, "Date:   {}\n", date_822(author.when()))?;
         for line in commit.message().unwrap().lines() {
-            try!(writeln!(out, "    {}", line));
+            writeln!(out, "    {}", line)?;
         }
 
         if show_diff {
-            let tree = try!(commit.tree());
+            let tree = commit.tree()?;
             let parent_ids: Vec<_> = commit.parent_ids().take_while(|parent_id| tree.get_id(*parent_id).is_none()).collect();
 
-            try!(writeln!(out, ""));
+            writeln!(out, "")?;
             if parent_ids.len() > 1 {
-                try!(writeln!(out, "(Diffs of series merge commits not yet supported)"));
+                writeln!(out, "(Diffs of series merge commits not yet supported)")?;
             } else {
                 let parent_tree = if parent_ids.len() == 0 {
                     None
                 } else {
-                    Some(try!(try!(repo.find_commit(parent_ids[0])).tree()))
+                    Some(repo.find_commit(parent_ids[0])?.tree()?)
                 };
-                try!(write_series_diff(out, repo, &diffcolors, parent_tree.as_ref(), Some(&tree)));
+                write_series_diff(out, repo, &diffcolors, parent_tree.as_ref(), Some(&tree))?;
             }
         }
     }
@@ -1678,23 +1678,23 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
         s => { return Err(format!("{:?} in progress; cannot rebase", s).into()); }
     }
 
-    let internals = try!(Internals::read(repo));
-    let series = try!(try!(internals.working.get("series")).ok_or("Could not find entry \"series\" in working index"));
-    let base = try!(try!(internals.working.get("base")).ok_or("Cannot rebase series; no base set.\nUse \"git series base\" to set base."));
+    let internals = Internals::read(repo)?;
+    let series = internals.working.get("series")?.ok_or("Could not find entry \"series\" in working index")?;
+    let base = internals.working.get("base")?.ok_or("Cannot rebase series; no base set.\nUse \"git series base\" to set base.")?;
     if series.id() == base.id() {
         return Err("No patches to rebase; series and base identical.".into());
-    } else if !try!(repo.graph_descendant_of(series.id(), base.id())) {
+    } else if !repo.graph_descendant_of(series.id(), base.id())? {
         return Err(format!("Cannot rebase: current base {} not an ancestor of series {}", base.id(), series.id()).into());
     }
 
     // Check for unstaged or uncommitted changes before attempting to rebase.
-    let series_commit = try!(repo.find_commit(series.id()));
-    let series_tree = try!(series_commit.tree());
+    let series_commit = repo.find_commit(series.id())?;
+    let series_tree = series_commit.tree()?;
     let mut unclean = String::new();
-    if !diff_empty(&try!(repo.diff_tree_to_index(Some(&series_tree), None, None))) {
+    if !diff_empty(&repo.diff_tree_to_index(Some(&series_tree), None, None)?) {
         writeln!(unclean, "Cannot rebase: you have unstaged changes.").unwrap();
     }
-    if !diff_empty(&try!(repo.diff_index_to_workdir(None, None))) {
+    if !diff_empty(&repo.diff_index_to_workdir(None, None)?) {
         if unclean.is_empty() {
             writeln!(unclean, "Cannot rebase: your index contains uncommitted changes.").unwrap();
         } else {
@@ -1705,25 +1705,25 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
         return Err(unclean.into());
     }
 
-    let mut revwalk = try!(repo.revwalk());
+    let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
-    try!(revwalk.push(series.id()));
-    try!(revwalk.hide(base.id()));
-    let commits: Vec<Commit> = try!(revwalk.map(|c| {
-        let id = try!(c);
-        let mut commit = try!(repo.find_commit(id));
+    revwalk.push(series.id())?;
+    revwalk.hide(base.id())?;
+    let commits: Vec<Commit> = revwalk.map(|c| {
+        let id = c?;
+        let mut commit = repo.find_commit(id)?;
         if commit.parent_ids().count() > 1 {
-            return Err(format!("Error: cannot rebase merge commit:\n{}", try!(commit_obj_summarize(&mut commit))).into());
+            return Err(format!("Error: cannot rebase merge commit:\n{}", commit_obj_summarize(&mut commit)?).into());
         }
         Ok(commit)
-    }).collect::<Result<_>>());
+    }).collect::<Result<_>>()?;
 
     let interactive = m.is_present("interactive");
     let onto = match m.value_of("onto") {
         None => None,
         Some(onto) => {
-            let obj = try!(repo.revparse_single(onto));
-            let commit = try!(obj.peel(ObjectType::Commit));
+            let obj = repo.revparse_single(onto)?;
+            let commit = obj.peel(ObjectType::Commit)?;
             Some(commit.id())
         },
     };
@@ -1734,63 +1734,63 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
         return Ok(());
     }
 
-    let (base_short, _) = try!(commit_summarize_components(&repo, base.id()));
-    let (newbase_short, _) = try!(commit_summarize_components(&repo, newbase));
-    let (series_short, _) = try!(commit_summarize_components(&repo, series.id()));
+    let (base_short, _) = commit_summarize_components(&repo, base.id())?;
+    let (newbase_short, _) = commit_summarize_components(&repo, newbase)?;
+    let (series_short, _) = commit_summarize_components(&repo, series.id())?;
 
-    let newbase_obj = try!(repo.find_commit(newbase)).into_object();
+    let newbase_obj = repo.find_commit(newbase)?.into_object();
 
-    let dir = try!(TempDir::new_in(repo.path(), "rebase-merge"));
+    let dir = TempDir::new_in(repo.path(), "rebase-merge")?;
     let final_path = repo.path().join("rebase-merge");
     let mut create = std::fs::OpenOptions::new();
     create.write(true).create_new(true);
 
-    try!(create.open(dir.path().join("git-series")));
-    try!(create.open(dir.path().join("quiet")));
-    try!(create.open(dir.path().join("interactive")));
+    create.open(dir.path().join("git-series"))?;
+    create.open(dir.path().join("quiet"))?;
+    create.open(dir.path().join("interactive"))?;
 
-    let mut head_name_file = try!(create.open(dir.path().join("head-name")));
-    try!(writeln!(head_name_file, "detached HEAD"));
+    let mut head_name_file = create.open(dir.path().join("head-name"))?;
+    writeln!(head_name_file, "detached HEAD")?;
 
-    let mut onto_file = try!(create.open(dir.path().join("onto")));
-    try!(writeln!(onto_file, "{}", newbase));
+    let mut onto_file = create.open(dir.path().join("onto"))?;
+    writeln!(onto_file, "{}", newbase)?;
 
-    let mut orig_head_file = try!(create.open(dir.path().join("orig-head")));
-    try!(writeln!(orig_head_file, "{}", series.id()));
+    let mut orig_head_file = create.open(dir.path().join("orig-head"))?;
+    writeln!(orig_head_file, "{}", series.id())?;
 
     let git_rebase_todo_filename = dir.path().join("git-rebase-todo");
-    let mut git_rebase_todo = try!(create.open(&git_rebase_todo_filename));
+    let mut git_rebase_todo = create.open(&git_rebase_todo_filename)?;
     for mut commit in commits {
-        try!(writeln!(git_rebase_todo, "pick {}", try!(commit_obj_summarize(&mut commit))));
+        writeln!(git_rebase_todo, "pick {}", commit_obj_summarize(&mut commit)?)?;
     }
     if let Some(onto) = onto {
-        try!(writeln!(git_rebase_todo, "exec git series base {}", onto));
+        writeln!(git_rebase_todo, "exec git series base {}", onto)?;
     }
-    try!(writeln!(git_rebase_todo, "\n# Rebase {}..{} onto {}", base_short, series_short, newbase_short));
-    try!(write!(git_rebase_todo, "{}", REBASE_COMMENT));
+    writeln!(git_rebase_todo, "\n# Rebase {}..{} onto {}", base_short, series_short, newbase_short)?;
+    write!(git_rebase_todo, "{}", REBASE_COMMENT)?;
     drop(git_rebase_todo);
 
     // Interactive editor
     if interactive {
-        let config = try!(repo.config());
-        try!(run_editor(&config, &git_rebase_todo_filename));
-        let mut file = try!(File::open(&git_rebase_todo_filename));
+        let config = repo.config()?;
+        run_editor(&config, &git_rebase_todo_filename)?;
+        let mut file = File::open(&git_rebase_todo_filename)?;
         let mut todo = String::new();
-        try!(file.read_to_string(&mut todo));
-        let todo = try!(git2::message_prettify(todo, git2::DEFAULT_COMMENT_CHAR));
+        file.read_to_string(&mut todo)?;
+        let todo = git2::message_prettify(todo, git2::DEFAULT_COMMENT_CHAR)?;
         if todo.is_empty() {
             return Err("Nothing to do".into());
         }
     }
 
     // Avoid races by not calling .into_path until after the rename succeeds.
-    try!(std::fs::rename(dir.path(), final_path));
+    std::fs::rename(dir.path(), final_path)?;
     dir.into_path();
 
-    try!(checkout_tree(repo, &newbase_obj));
-    try!(repo.reference("HEAD", newbase, true, &format!("rebase -i (start): checkout {}", newbase)));
+    checkout_tree(repo, &newbase_obj)?;
+    repo.reference("HEAD", newbase, true, &format!("rebase -i (start): checkout {}", newbase))?;
 
-    let status = try!(Command::new("git").arg("rebase").arg("--continue").status());
+    let status = Command::new("git").arg("rebase").arg("--continue").status()?;
     if !status.success() {
         return Err(format!("git rebase --continue exited with status {}", status).into());
     }
@@ -1799,24 +1799,24 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
 }
 
 fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
-    let config = try!(try!(repo.config()).snapshot());
-    let shead = try!(repo.find_reference(SHEAD_REF));
-    let shead_commit = try!(try!(shead.resolve()).peel_to_commit());
-    let stree = try!(shead_commit.tree());
+    let config = repo.config()?.snapshot()?;
+    let shead = repo.find_reference(SHEAD_REF)?;
+    let shead_commit = shead.resolve()?.peel_to_commit()?;
+    let stree = shead_commit.tree()?;
 
-    let series = try!(stree.get_name("series").ok_or("Internal error: series did not contain \"series\""));
+    let series = stree.get_name("series").ok_or("Internal error: series did not contain \"series\"")?;
     let series_id = series.id();
-    let mut series_commit = try!(repo.find_commit(series_id));
-    let base = try!(stree.get_name("base").ok_or("Cannot request pull; no base set.\nUse \"git series base\" to set base."));
-    let mut base_commit = try!(repo.find_commit(base.id()));
+    let mut series_commit = repo.find_commit(series_id)?;
+    let base = stree.get_name("base").ok_or("Cannot request pull; no base set.\nUse \"git series base\" to set base.")?;
+    let mut base_commit = repo.find_commit(base.id())?;
 
     let (cover_content, subject, cover_body) = if let Some(entry) = stree.get_name("cover") {
-        let cover_blob = try!(repo.find_blob(entry.id()));
-        let content = try!(std::str::from_utf8(cover_blob.content())).to_string();
+        let cover_blob = repo.find_blob(entry.id())?;
+        let content = std::str::from_utf8(cover_blob.content())?.to_string();
         let (subject, body) = split_message(&content);
         (Some(content.to_string()), subject.to_string(), Some(body.to_string()))
     } else {
-        (None, try!(shead_series_name(&shead)), None)
+        (None, shead_series_name(&shead)?, None)
     };
 
     let url = m.value_of("url").unwrap();
@@ -1824,9 +1824,9 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     let full_tag = format!("refs/tags/{}", tag);
     let full_tag_peeled = format!("{}^{{}}", full_tag);
     let full_head = format!("refs/heads/{}", tag);
-    let mut remote = try!(repo.remote_anonymous(url));
-    try!(remote.connect(git2::Direction::Fetch).map_err(|e| format!("Could not connect to remote repository {}\n{}", url, e)));
-    let remote_heads = try!(remote.list());
+    let mut remote = repo.remote_anonymous(url)?;
+    remote.connect(git2::Direction::Fetch).map_err(|e| format!("Could not connect to remote repository {}\n{}", url, e))?;
+    let remote_heads = remote.list()?;
 
     /* Find the requested name as either a tag or head */
     let mut opt_remote_tag = None;
@@ -1846,8 +1846,8 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             if remote_tag_peeled != series_id {
                 return Err(format!("Remote tag {} does not refer to series {}", tag, series_id).into());
             }
-            let local_tag = try!(repo.find_tag(remote_tag).map_err(|e|
-                    format!("Could not find remote tag {} ({}) in local repository: {}", tag, remote_tag, e)));
+            let local_tag = repo.find_tag(remote_tag).map_err(|e|
+                    format!("Could not find remote tag {} ({}) in local repository: {}", tag, remote_tag, e))?;
             let mut local_tag_msg = local_tag.message().unwrap().to_string();
             if let Some(sig_index) = local_tag_msg.find("-----BEGIN PGP ") {
                 local_tag_msg.truncate(sig_index);
@@ -1881,52 +1881,50 @@ fn req(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         format!("  {} ({})", summary, date)
     };
 
-    let mut revwalk = try!(repo.revwalk());
+    let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL|git2::Sort::REVERSE);
-    try!(revwalk.push(series_id));
-    try!(revwalk.hide(base.id()));
-    let mut commits: Vec<Commit> = try!(revwalk.map(|c| {
-        Ok(try!(repo.find_commit(try!(c))))
-    }).collect::<Result<_>>());
+    revwalk.push(series_id)?;
+    revwalk.hide(base.id())?;
+    let mut commits: Vec<Commit> = revwalk.map(|c| Ok(repo.find_commit(c?)?)).collect::<Result<_>>()?;
     if commits.is_empty() {
         return Err("No patches to request pull of; series and base identical.".into());
     }
 
-    let author = try!(get_signature(&config, "AUTHOR"));
+    let author = get_signature(&config, "AUTHOR")?;
     let author_email = author.email().unwrap();
     let message_id = format!("<pull.{}.{}.git-series.{}>", shead_commit.id(), author.when().seconds(), author_email);
 
-    let diff = try!(repo.diff_tree_to_tree(Some(&base_commit.tree().unwrap()), Some(&series_commit.tree().unwrap()), None));
-    let stats = try!(diffstat(&diff));
+    let diff = repo.diff_tree_to_tree(Some(&base_commit.tree().unwrap()), Some(&series_commit.tree().unwrap()), None)?;
+    let stats = diffstat(&diff)?;
 
-    try!(out.auto_pager(&config, "request-pull", true));
-    let diffcolors = try!(DiffColors::new(out, &config));
+    out.auto_pager(&config, "request-pull", true)?;
+    let diffcolors = DiffColors::new(out, &config)?;
 
-    try!(writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id()));
-    try!(writeln!(out, "Message-Id: {}", message_id));
-    try!(writeln!(out, "From: {} <{}>", author.name().unwrap(), author_email));
-    try!(writeln!(out, "Date: {}", date_822(author.when())));
-    try!(writeln!(out, "Subject: [GIT PULL] {}\n", subject));
+    writeln!(out, "From {} Mon Sep 17 00:00:00 2001", shead_commit.id())?;
+    writeln!(out, "Message-Id: {}", message_id)?;
+    writeln!(out, "From: {} <{}>", author.name().unwrap(), author_email)?;
+    writeln!(out, "Date: {}", date_822(author.when()))?;
+    writeln!(out, "Subject: [GIT PULL] {}\n", subject)?;
     if let Some(extra_body) = extra_body {
-        try!(writeln!(out, "{}", extra_body));
+        writeln!(out, "{}", extra_body)?;
     }
-    try!(writeln!(out, "The following changes since commit {}:\n", base.id()));
-    try!(writeln!(out, "{}\n", commit_subject_date(&mut base_commit)));
-    try!(writeln!(out, "are available in the git repository at:\n"));
-    try!(writeln!(out, "  {} {}\n", url, remote_pull_name));
-    try!(writeln!(out, "for you to fetch changes up to {}:\n", series.id()));
-    try!(writeln!(out, "{}\n", commit_subject_date(&mut series_commit)));
-    try!(writeln!(out, "----------------------------------------------------------------"));
+    writeln!(out, "The following changes since commit {}:\n", base.id())?;
+    writeln!(out, "{}\n", commit_subject_date(&mut base_commit))?;
+    writeln!(out, "are available in the git repository at:\n")?;
+    writeln!(out, "  {} {}\n", url, remote_pull_name)?;
+    writeln!(out, "for you to fetch changes up to {}:\n", series.id())?;
+    writeln!(out, "{}\n", commit_subject_date(&mut series_commit))?;
+    writeln!(out, "----------------------------------------------------------------")?;
     if let Some(msg) = msg {
-        try!(writeln!(out, "{}", msg));
-        try!(writeln!(out, "----------------------------------------------------------------"));
+        writeln!(out, "{}", msg)?;
+        writeln!(out, "----------------------------------------------------------------")?;
     }
-    try!(writeln!(out, "{}", shortlog(&mut commits)));
-    try!(writeln!(out, "{}", stats));
+    writeln!(out, "{}", shortlog(&mut commits))?;
+    writeln!(out, "{}", stats)?;
     if m.is_present("patch") {
-        try!(write_diff(out, &diffcolors, &diff, false));
+        write_diff(out, &diffcolors, &diff, false)?;
     }
-    try!(writeln!(out, "{}", mail_signature()));
+    writeln!(out, "{}", mail_signature())?;
 
     Ok(())
 }
@@ -2008,7 +2006,7 @@ fn main() {
     let mut out = Output::new();
 
     let err = || -> Result<()> {
-        let repo = try!(Repository::discover("."));
+        let repo = Repository::discover(".")?;
         match m.subcommand() {
             ("", _) => series(&mut out, &repo),
             ("add", Some(ref sm)) => add(&repo, &sm),
