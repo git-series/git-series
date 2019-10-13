@@ -1044,16 +1044,12 @@ fn shortlog(commits: &mut [Commit]) -> String {
     s
 }
 
-fn ascii_isalnum(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-}
-
 fn sanitize_summary(summary: &str) -> String {
     let mut s = String::with_capacity(summary.len());
     let mut prev_dot = false;
     let mut need_space = false;
     for c in summary.chars() {
-        if ascii_isalnum(c) || c == '_' || c == '.' {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '.' {
             if need_space {
                 s.push('-');
                 need_space = false;
