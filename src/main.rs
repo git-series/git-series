@@ -132,7 +132,14 @@ fn notfound_to_none<T>(result: std::result::Result<T, git2::Error>) -> Result<Op
 
 // If current_id_opt is Some, acts like reference_matching.  If current_id_opt is None, acts like
 // reference.
-fn reference_matching_opt<'repo>(repo: &'repo Repository, name: &str, id: Oid, force: bool, current_id_opt: Option<Oid>, log_message: &str) -> Result<Reference<'repo>> {
+fn reference_matching_opt<'repo>(
+    repo: &'repo Repository,
+    name: &str,
+    id: Oid,
+    force: bool,
+    current_id_opt: Option<Oid>,
+    log_message: &str,
+) -> Result<Reference<'repo>> {
     Ok(match current_id_opt {
         None => repo.reference(name, id, force, log_message)?,
         Some(current_id) => repo.reference_matching(name, id, force, current_id, log_message)?,
