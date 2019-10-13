@@ -1302,7 +1302,6 @@ fn write_commit_range_diff<W: IoWrite>(out: &mut W, repo: &Repository, colors: &
     // showing all of their prerequisite commits.
     let mut commits1_state_index = 0;
     for (i2, opt_i1) in commits2_from1.iter().enumerate() {
-        //for i1 in commits1_state_index..ncommits1 {
         while commits1_state_index < ncommits1 {
             match commits1_state[commits1_state_index] {
                 CommitState::Unhandled => { break }
@@ -1770,7 +1769,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     try!(write!(git_rebase_todo, "{}", REBASE_COMMENT));
     drop(git_rebase_todo);
 
-    // Interactive editor if interactive {
+    // Interactive editor
     if interactive {
         let config = try!(repo.config());
         try!(run_editor(&config, &git_rebase_todo_filename));
