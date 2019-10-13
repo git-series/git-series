@@ -22,7 +22,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Config, Commit, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
+use git2::{Commit, Config, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
 use tempdir::TempDir;
 
 quick_error! {
