@@ -1,15 +1,3 @@
-extern crate ansi_term;
-extern crate atty;
-extern crate chrono;
-#[macro_use]
-extern crate clap;
-extern crate colorparse;
-extern crate git2;
-extern crate munkres;
-#[macro_use]
-extern crate quick_error;
-extern crate tempdir;
-
 use std::cmp::max;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -23,7 +11,7 @@ use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
 use git2::{Commit, Config, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
-use tempdir::TempDir;
+use quick_error::quick_error;
 
 quick_error! {
     #[derive(Debug)]
@@ -1572,7 +1560,7 @@ fn write_series_diff<W: IoWrite>(
 }
 
 fn mail_signature() -> String {
-    format!("-- \ngit-series {}", crate_version!())
+    format!("-- \ngit-series {}", clap::crate_version!())
 }
 
 fn ensure_space(s: &str) -> &'static str {
@@ -1948,7 +1936,7 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
 
     let newbase_obj = repo.find_commit(newbase)?.into_object();
 
-    let dir = TempDir::new_in(repo.path(), "rebase-merge")?;
+    let dir = tempdir::TempDir::new_in(repo.path(), "rebase-merge")?;
     let final_path = repo.path().join("rebase-merge");
     let mut create = std::fs::OpenOptions::new();
     create.write(true).create_new(true);
@@ -2173,7 +2161,7 @@ fn main() {
             .bin_name("git series")
             .about("Track patch series in git")
             .author("Josh Triplett <josh@joshtriplett.org>")
-            .version(crate_version!())
+            .version(clap::crate_version!())
             .global_setting(AppSettings::ColoredHelp)
             .global_setting(AppSettings::UnifiedHelpMessage)
             .global_setting(AppSettings::VersionlessSubcommands)
