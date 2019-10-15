@@ -434,7 +434,7 @@ fn checkout_tree(repo: &Repository, treeish: &Object) -> Result<()> {
         }
         _ => result?,
     }
-    println!("");
+    println!();
     if !dirty.is_empty() {
         eprintln!("Files with changes unaffected by checkout:");
         for path in dirty {
@@ -607,7 +607,7 @@ fn get_editor(config: &Config) -> Result<OsString> {
     if terminal_is_dumb {
         return Err("TERM unset or \"dumb\" but EDITOR unset".into());
     }
-    return Ok("vi".into());
+    Ok("vi".into())
 }
 
 // Get the pager to use; with for_cmd set, get the pager for use by the
@@ -720,7 +720,7 @@ impl Output {
             return Ok(Style::new());
         }
         if self.pager.is_some() {
-            let color_pager = notfound_to_none(config.get_bool(&format!("color.pager")))?.unwrap_or(true);
+            let color_pager = notfound_to_none(config.get_bool("color.pager"))?.unwrap_or(true);
             if !color_pager {
                 return Ok(Style::new());
             }
@@ -1123,7 +1123,7 @@ fn shortlog(commits: &mut [Commit]) -> String {
 
     for commit in commits {
         let author = commit.author().name().unwrap().to_string();
-        author_map.entry(author).or_insert(Vec::new())
+        author_map.entry(author).or_insert_with(Vec::new)
             .push(commit.summary().unwrap().to_string());
     }
 
@@ -1134,7 +1134,7 @@ fn shortlog(commits: &mut [Commit]) -> String {
         if first {
             first = false;
         } else {
-            writeln!(s, "").unwrap();
+            writeln!(s).unwrap();
         }
         let summaries = author_map.get(author).unwrap();
         writeln!(s, "{} ({}):", author, summaries.len()).unwrap();
@@ -1232,8 +1232,8 @@ impl DiffColors {
             frag: out.get_color(&config, "diff", "frag", "cyan")?,
             func: out.get_color(&config, "diff", "func", "normal")?,
             context: out.get_color(&config, "diff", "context", "normal")?,
-            old: old,
-            new: new,
+            old,
+            new,
             series_old: old.reverse(),
             series_new: new.reverse(),
         })
@@ -1709,7 +1709,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
     for (commit_num, commit) in commits.iter().enumerate() {
         let first_mail = commit_num == 0 && cover_entry.is_none();
         if to_stdout && !first_mail {
-            writeln!(out, "")?;
+            writeln!(out)?;
         }
 
         let message = commit.message().unwrap();
@@ -1817,7 +1817,7 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         if first {
             first = false;
         } else {
-            writeln!(out, "")?;
+            writeln!(out)?;
         }
         let oid = oid?;
         let commit = repo.find_commit(oid)?;
@@ -1834,11 +1834,11 @@ fn log(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
             let tree = commit.tree()?;
             let parent_ids: Vec<_> = commit.parent_ids().take_while(|parent_id| tree.get_id(*parent_id).is_none()).collect();
 
-            writeln!(out, "")?;
+            writeln!(out)?;
             if parent_ids.len() > 1 {
                 writeln!(out, "(Diffs of series merge commits not yet supported)")?;
             } else {
-                let parent_tree = if parent_ids.len() == 0 {
+                let parent_tree = if parent_ids.is_empty() {
                     None
                 } else {
                     Some(repo.find_commit(parent_ids[0])?.tree()?)
