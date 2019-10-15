@@ -941,13 +941,11 @@ fn commit_status(
     };
 
     let status = ansi_term::ANSIStrings(&status).to_string();
-    if do_status || !changes {
-        if do_status {
-            write!(out, "{}", status)?;
-        } else {
-            return Err(status.into());
-        }
+    if do_status {
+        write!(out, "{}", status)?;
         return Ok(());
+    } else if !changes {
+        return Err(status.into());
     }
 
     // Check that the commit includes the series
