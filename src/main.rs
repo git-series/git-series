@@ -744,9 +744,9 @@ fn get_signature(config: &Config, which: &str) -> Result<git2::Signature<'static
 
 fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status: bool) -> Result<()> {
     let config = repo.config()?.snapshot()?;
-    let shead = match repo.find_reference(SHEAD_REF) {
-        Err(ref e) if e.code() == git2::ErrorCode::NotFound => { println!("No series; use \"git series start <name>\" to start"); return Ok(()); }
-        result => result?,
+    let shead = match notfound_to_none(repo.find_reference(SHEAD_REF))? {
+        None => { println!("No series; use \"git series start <name>\" to start"); return Ok(()); }
+        Some(result) => result,
     };
     let series_name = shead_series_name(&shead)?;
 
@@ -798,13 +798,12 @@ fn commit_status(out: &mut Output, repo: &Repository, m: &ArgMatches, do_status:
     let working_tree = repo.find_tree(internals.working.write()?)?;
     let staged_tree = repo.find_tree(internals.staged.write()?)?;
 
-    let shead_commit = match shead.resolve() {
-        Ok(r) => Some(r.peel_to_commit()?),
-        Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
+    let shead_commit = match notfound_to_none(shead.resolve())? {
+        Some(r) => Some(r.peel_to_commit()?),
+        None => {
             status.push(color_header.paint("\nInitial series commit\n"));
             None
         }
-        Err(e) => Err(e)?,
     };
     let shead_tree = match shead_commit {
         Some(ref c) => Some(c.tree()?),
