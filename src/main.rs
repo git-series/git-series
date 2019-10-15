@@ -1778,7 +1778,7 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         };
         writeln!(out, "Subject: {}{}\n", prefix, subject)?;
 
-        if !no_from && (commit_author_name != committer_name || commit_author_email != committer_email) {
+        if !no_from && (commit_author_name, commit_author_email) != (committer_name, committer_email) {
             writeln!(out, "From: {} <{}>\n", commit_author_name, commit_author_email)?;
         }
         if !body.is_empty() {
