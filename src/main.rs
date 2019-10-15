@@ -732,13 +732,13 @@ fn get_signature(config: &Config, which: &str) -> Result<git2::Signature<'static
     let name_var = ["GIT_", which, "_NAME"].concat();
     let email_var = ["GIT_", which, "_EMAIL"].concat();
     let which_lc = which.to_lowercase();
-    let name = env::var(&name_var).or_else(
-            |_| config.get_string("user.name").or_else(
-                |_| Err(format!("Could not determine {} name: checked ${} and user.name in git config", which_lc, name_var))))?;
-    let email = env::var(&email_var).or_else(
-            |_| config.get_string("user.email").or_else(
-                |_| env::var("EMAIL").or_else(
-                    |_| Err(format!("Could not determine {} email: checked ${}, user.email in git config, and $EMAIL", which_lc, email_var)))))?;
+    let name = env::var(&name_var)
+        .or_else(|_| config.get_string("user.name"))
+        .or_else(|_| Err(format!("Could not determine {} name: checked ${} and user.name in git config", which_lc, name_var)))?;
+    let email = env::var(&email_var)
+        .or_else(|_| config.get_string("user.email"))
+        .or_else(|_| env::var("EMAIL"))
+        .or_else(|_| Err(format!("Could not determine {} email: checked ${}, user.email in git config, and $EMAIL", which_lc, email_var)))?;
     Ok(git2::Signature::now(&name, &email)?)
 }
 
