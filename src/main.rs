@@ -10,7 +10,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Commit, Config, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
+use git2::{Commit, Config, Delta, Diff, DiffOptions, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
 use quick_error::quick_error;
 
 quick_error! {
@@ -1721,10 +1721,15 @@ fn format(out: &mut Output, repo: &Repository, m: &ArgMatches) -> Result<()> {
         let summary_sanitized = sanitize_summary(&subject);
         let this_message_id = format!("<{}.{}>", commit_id, message_id_suffix);
         let parent = commit.parent(0)?;
+
+        // Set up diff options to include binary data
+        let mut diff_options = DiffOptions::default();
+        diff_options.show_binary(true);
+
         let diff = repo.diff_tree_to_tree(
             Some(&parent.tree().unwrap()),
             Some(&commit.tree().unwrap()),
-            None,
+            Some(&mut diff_options),
         )?;
         let stats = diffstat(&diff)?;
 
