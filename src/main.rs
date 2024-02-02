@@ -1418,7 +1418,7 @@ fn write_commit_range_diff<W: IoWrite>(
     let result = munkres::solve_assignment(&mut weight_matrix)?;
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    enum CommitState { Unhandled, Handled, Deleted };
+    enum CommitState { Unhandled, Handled, Deleted }
     let mut commits2_from1: Vec<_> = std::iter::repeat(None).take(ncommits2).collect();
     let mut commits1_state: Vec<_> = std::iter::repeat(CommitState::Unhandled).take(ncommits1).collect();
     let mut commit_pairs = Vec::with_capacity(n);
