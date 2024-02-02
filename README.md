@@ -34,7 +34,7 @@ As you change a patch series, git-series can show diffs between versions,
 finding and showing the correspondence between the old and new versions of each
 commit, even after changing or rebasing those commits.  The series diff format
 shows corresponding old and new commits side-by-side, with interdiffs for
-modified commits.
+modified commits. (This is similar to the `git range-diff` format.)
 
 Building and installing
 =======================
