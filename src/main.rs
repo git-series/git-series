@@ -10,7 +10,7 @@ use std::process::Command;
 use ansi_term::Style;
 use chrono::offset::TimeZone;
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches, SubCommand};
-use git2::{Commit, Config, Delta, Diff, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
+use git2::{Commit, Config, Delta, Diff, DiffOptions, Object, ObjectType, Oid, Reference, Repository, Tree, TreeBuilder};
 use quick_error::quick_error;
 
 quick_error! {
@@ -1887,7 +1887,8 @@ fn rebase(repo: &Repository, m: &ArgMatches) -> Result<()> {
     if !diff_empty(&repo.diff_tree_to_index(Some(&series_tree), None, None)?) {
         writeln!(unclean, "Cannot rebase: you have unstaged changes.").unwrap();
     }
-    if !diff_empty(&repo.diff_index_to_workdir(None, None)?) {
+    if !diff_empty(&repo.diff_index_to_workdir(None,
+            Some(DiffOptions::new().ignore_submodules(true)))?) {
         if unclean.is_empty() {
             writeln!(unclean, "Cannot rebase: your index contains uncommitted changes.").unwrap();
         } else {
